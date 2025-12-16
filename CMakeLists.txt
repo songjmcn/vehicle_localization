@@ -28,6 +28,7 @@ set(SOURCES
     kalman_filter.c
     rtk_calibration.c
     localization_system.c
+    wheel_odometry_processor.c
 )
 
 # 头文件目录
@@ -60,6 +61,7 @@ install(FILES
     rtk_calibration.h
     localization_system.h
     localization_system_private.h
+    wheel_odometry_processor.h
     DESTINATION include
 )
 

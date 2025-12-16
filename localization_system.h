@@ -9,6 +9,7 @@
 #include "localization_types.h"
 #include "kalman_filter.h"
 #include "rtk_calibration.h"
+#include "wheel_odometry_processor.h"
 
 /**
  * @brief 定位系统上下文
@@ -18,6 +19,8 @@ typedef struct {
     RTKCalibrationManager_t rtk_calibration;
     CalibrationParams_t calibration;
     DiagnosticsInfo_t diagnostics;
+    WheelOdometryProcessor_t wheel_processor;  /**< 轮速脉冲处理器 */
+    WheelConfig_t wheel_config;                 /**< 轮速计配置 */
     
     /* 系统状态 */
     bool is_initialized;
@@ -128,5 +131,80 @@ int localization_system_get_steering_stats(const LocalizationSystem_t *sys,
  * @param sys 系统指针
  */
 void localization_system_reset_steering_filter(LocalizationSystem_t *sys);
+
+/**
+ * @brief 配置轮速计参数
+ * @param sys 系统指针
+ * @param config 轮速计配置
+ * @return 0成功，-1失败
+ */
+int localization_system_set_wheel_config(LocalizationSystem_t *sys,
+                                        const WheelConfig_t *config);
+
+/**
+ * @brief 更新轮速脉冲数据
+ * 
+ * 用于硬件提供脉冲计数时调用。系统会自动：
+ *   1. 计算脉冲增量
+ *   2. 转换为距离
+ *   3. 计算速度
+ *   4. 应用低速平滑
+ *   5. 集成到轮速传感器数据
+ * 
+ * @param sys 系统指针
+ * @param pulse_count 脉冲计数（累计值）
+ * @param timestamp 时间戳 (ms)
+ * @return 0成功，-1失败
+ * 
+ * @note 需要在 localization_system_set_wheel_config() 后调用
+ * @note 推荐调用频率 50Hz 以上
+ */
+int localization_system_update_wheel_pulse(LocalizationSystem_t *sys,
+                                          uint32_t pulse_count,
+                                          uint32_t timestamp);
+
+/**
+ * @brief 更新轮速速度值
+ * 
+ * 用于硬件已提供速度值时调用。系统会：
+ *   1. 应用低速平滑
+ *   2. 积分距离
+ *   3. 检测异常
+ *   4. 集成到轮速传感器数据
+ * 
+ * @param sys 系统指针
+ * @param velocity 速度 (m/s)
+ * @param timestamp 时间戳 (ms)
+ * @return 0成功，-1失败
+ * 
+ * @note 当硬件已转换脉冲→速度时使用此接口
+ * @note 推荐调用频率 50Hz 以上
+ */
+int localization_system_update_wheel_velocity(LocalizationSystem_t *sys,
+                                             double velocity,
+                                             uint32_t timestamp);
+
+/**
+ * @brief 获取最新的轮速数据
+ * @param sys 系统指针
+ * @param odometry 输出的轮速数据
+ * @return 0成功，-1失败
+ */
+int localization_system_get_wheel_odometry(const LocalizationSystem_t *sys,
+                                           WheelOdometryData_t *odometry);
+
+/**
+ * @brief 检查轮速脉冲是否超时
+ * @param sys 系统指针
+ * @return true超时，false正常
+ */
+bool localization_system_wheel_is_timeout(const LocalizationSystem_t *sys);
+
+/**
+ * @brief 重置轮速处理器
+ * @param sys 系统指针
+ * @return 0成功，-1失败
+ */
+int localization_system_reset_wheel_processor(LocalizationSystem_t *sys);
 
 #endif /* LOCALIZATION_SYSTEM_H */

@@ -3,12 +3,12 @@ CFLAGS = -Wall -Wextra -O2 -std=c99 -lm
 LDFLAGS = -lm
 
 # 源文件
-SOURCES = motion_model.c kalman_filter.c rtk_calibration.c localization_system.c example_usage.c
+SOURCES = motion_model.c kalman_filter.c rtk_calibration.c localization_system.c wheel_odometry_processor.c example_usage.c
 OBJECTS = $(SOURCES:.c=.o)
 TARGET = localization_example
 
 # 头文件
-HEADERS = localization_types.h motion_model.h kalman_filter.h rtk_calibration.h localization_system.h
+HEADERS = localization_types.h motion_model.h kalman_filter.h rtk_calibration.h localization_system.h wheel_odometry_processor.h
 
 # 编译目标
 all: $(TARGET)

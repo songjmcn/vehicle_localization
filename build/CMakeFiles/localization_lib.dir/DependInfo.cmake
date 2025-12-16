@@ -12,6 +12,7 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/Users/alex/workspace/code_review/vehicle_localization/localization_system.c" "CMakeFiles/localization_lib.dir/localization_system.c.o" "gcc" "CMakeFiles/localization_lib.dir/localization_system.c.o.d"
   "/Users/alex/workspace/code_review/vehicle_localization/motion_model.c" "CMakeFiles/localization_lib.dir/motion_model.c.o" "gcc" "CMakeFiles/localization_lib.dir/motion_model.c.o.d"
   "/Users/alex/workspace/code_review/vehicle_localization/rtk_calibration.c" "CMakeFiles/localization_lib.dir/rtk_calibration.c.o" "gcc" "CMakeFiles/localization_lib.dir/rtk_calibration.c.o.d"
+  "/Users/alex/workspace/code_review/vehicle_localization/wheel_odometry_processor.c" "CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o" "gcc" "CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

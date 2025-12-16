@@ -147,15 +147,75 @@ int main() {
     
     printf("✓ Localization system initialized\n\n");
     
+    /* ===== 可选：配置轮速脉冲处理器 ===== */
+    /* 
+     * 如果硬件提供脉冲计数而非直接速度值，需要先配置脉冲处理器。
+     * 此示例展示两种使用方式：
+     * 方式1：传入脉冲计数，由处理器转换为速度
+     * 方式2：直接传入速度值（使用默认配置）
+     */
+    WheelConfig_t wheel_config = {
+        .pulses_per_wheel_rev = 400,    /* 码盘：400脉冲/圈 */
+        .wheel_radius = 0.35,           /* 轮半径：0.35米 */
+        .low_speed_threshold = 0.3,     /* 低速平滑阈值 */
+        .pulse_timeout_ms = 500         /* 脉冲超时检测 */
+    };
+    
+    if (localization_system_set_wheel_config(&localization_sys, &wheel_config) != 0) {
+        printf("WARNING: Failed to configure wheel processor\n");
+    } else {
+        printf("✓ Wheel odometry processor configured\n");
+        printf("  - Pulses per revolution: %u\n", wheel_config.pulses_per_wheel_rev);
+        printf("  - Wheel radius: %.2f m\n", wheel_config.wheel_radius);
+        printf("  - Low speed threshold: %.2f m/s\n\n", wheel_config.low_speed_threshold);
+    }
+    
     /* 运行定位循环（2600步 = 130秒）*/
     printf("Running localization process...\n");
     printf("───────────────────────────────────────────────────────\n");
+    
+    /* 脉冲计数模拟变量 */
+    uint32_t accumulated_pulses = 0;
+    (void)accumulated_pulses;  /* 此示例中未使用，保留供用户参考 */
+    double wheel_circumference = 2.0 * M_PI * wheel_config.wheel_radius;
     
     for (uint32_t step = 0; step < 2600; step++) {
         /* 生成传感器数据 */
         SensorReadings_t sensor_data;
         memset(&sensor_data, 0, sizeof(sensor_data));
         simulate_sensor_data(step, &sensor_data);
+        
+        /* ===== 演示：脉冲处理 ===== */
+        /* 
+         * 实际应用中，用户会从硬件读取脉冲计数，例如：
+         *   uint32_t pulse_count = read_pulse_from_hardware();
+         * 
+         * 这里我们基于模拟的速度数据来反推脉冲计数用于演示
+         */
+        uint32_t dt_ms = 50;  /* 50ms时间间隔 */
+        double distance_delta = sensor_data.wheel_odometry.velocity * (dt_ms / 1000.0);
+        uint32_t pulse_delta = (uint32_t)(distance_delta / wheel_circumference * wheel_config.pulses_per_wheel_rev);
+        accumulated_pulses += pulse_delta;
+        
+        uint32_t timestamp = 1000 + step * dt_ms;
+        
+        /* 方式1：使用脉冲处理（如果硬件提供脉冲计数）
+         * localization_system_update_wheel_pulse(&localization_sys, accumulated_pulses, timestamp);
+         */
+        
+        /* 方式2：直接使用速度值（如果硬件已转换为速度，或为简化示例）
+         * 这样处理器仍会应用低速平滑和异常检测
+         */
+        localization_system_update_wheel_velocity(&localization_sys, 
+                                                  sensor_data.wheel_odometry.velocity, 
+                                                  timestamp);
+        
+        /* 从处理器获取处理后的轮速数据 */
+        WheelOdometryData_t processed_odometry;
+        if (localization_system_get_wheel_odometry(&localization_sys, &processed_odometry) == 0) {
+            /* 使用处理后的数据更新sensor_data */
+            sensor_data.wheel_odometry = processed_odometry;
+        }
         
         /* 执行定位 */
         VehicleState_t estimated_state;

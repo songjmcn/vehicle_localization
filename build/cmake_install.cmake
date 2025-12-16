@@ -63,6 +63,7 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
     "/Users/alex/workspace/code_review/vehicle_localization/rtk_calibration.h"
     "/Users/alex/workspace/code_review/vehicle_localization/localization_system.h"
     "/Users/alex/workspace/code_review/vehicle_localization/localization_system_private.h"
+    "/Users/alex/workspace/code_review/vehicle_localization/wheel_odometry_processor.h"
     )
 endif()
 

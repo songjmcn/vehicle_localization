@@ -307,6 +307,30 @@ rtk_calibration.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/localization_lib.dir/build.make CMakeFiles/localization_lib.dir/rtk_calibration.c.s
 .PHONY : rtk_calibration.c.s
 
+wheel_odometry_processor.o: wheel_odometry_processor.c.o
+.PHONY : wheel_odometry_processor.o
+
+# target to build an object file
+wheel_odometry_processor.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/localization_lib.dir/build.make CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o
+.PHONY : wheel_odometry_processor.c.o
+
+wheel_odometry_processor.i: wheel_odometry_processor.c.i
+.PHONY : wheel_odometry_processor.i
+
+# target to preprocess a source file
+wheel_odometry_processor.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/localization_lib.dir/build.make CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.i
+.PHONY : wheel_odometry_processor.c.i
+
+wheel_odometry_processor.s: wheel_odometry_processor.c.s
+.PHONY : wheel_odometry_processor.s
+
+# target to generate assembly for a file
+wheel_odometry_processor.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/localization_lib.dir/build.make CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.s
+.PHONY : wheel_odometry_processor.c.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -336,6 +360,9 @@ help:
 	@echo "... rtk_calibration.o"
 	@echo "... rtk_calibration.i"
 	@echo "... rtk_calibration.s"
+	@echo "... wheel_odometry_processor.o"
+	@echo "... wheel_odometry_processor.i"
+	@echo "... wheel_odometry_processor.s"
 .PHONY : help
 
 

@@ -1,2 +1,2 @@
-/usr/bin/ar qc lib/liblocalization_lib.a CMakeFiles/localization_lib.dir/motion_model.c.o CMakeFiles/localization_lib.dir/kalman_filter.c.o CMakeFiles/localization_lib.dir/rtk_calibration.c.o CMakeFiles/localization_lib.dir/localization_system.c.o
+/usr/bin/ar qc lib/liblocalization_lib.a CMakeFiles/localization_lib.dir/motion_model.c.o CMakeFiles/localization_lib.dir/kalman_filter.c.o CMakeFiles/localization_lib.dir/rtk_calibration.c.o CMakeFiles/localization_lib.dir/localization_system.c.o CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o
 /usr/bin/ranlib lib/liblocalization_lib.a

@@ -32,6 +32,7 @@ CMakeFiles/localization_lib.dir/localization_system.c.o: \
   /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/17/include/stdbool.h \
   /Users/alex/workspace/code_review/vehicle_localization/kalman_filter.h \
   /Users/alex/workspace/code_review/vehicle_localization/rtk_calibration.h \
+  /Users/alex/workspace/code_review/vehicle_localization/wheel_odometry_processor.h \
   /Users/alex/workspace/code_review/vehicle_localization/motion_model.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/stdlib.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/_stdlib.h \

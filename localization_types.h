@@ -56,6 +56,24 @@ typedef struct {
 } IMUData_t;
 
 /**
+ * @brief 轮速计码盘配置（脉冲处理用）
+ */
+typedef struct {
+    uint32_t pulses_per_wheel_rev;  /**< 每圈脉冲数（如400） */
+    double wheel_radius;             /**< 轮半径 (m)，如 0.35 */
+    double low_speed_threshold;      /**< 低速阈值 (m/s)，默认 0.3 */
+    uint32_t pulse_timeout_ms;       /**< 脉冲超时 (ms)，默认 500 */
+} WheelConfig_t;
+
+/**
+ * @brief 原始脉冲数据（外部输入）
+ */
+typedef struct {
+    uint32_t pulse_count;    /**< 脉冲计数（累计或增量） */
+    uint32_t timestamp;      /**< 时间戳 (ms) */
+} WheelPulseData_t;
+
+/**
  * @brief 轮速计数据结构体
  */
 typedef struct {

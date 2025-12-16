@@ -128,12 +128,27 @@ CMakeFiles/localization_lib.dir/localization_system.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/localization_lib.dir/localization_system.c.s"
 	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /Users/alex/workspace/code_review/vehicle_localization/localization_system.c -o CMakeFiles/localization_lib.dir/localization_system.c.s
 
+CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o: CMakeFiles/localization_lib.dir/flags.make
+CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o: /Users/alex/workspace/code_review/vehicle_localization/wheel_odometry_processor.c
+CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o: CMakeFiles/localization_lib.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/alex/workspace/code_review/vehicle_localization/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building C object CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o -MF CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o.d -o CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o -c /Users/alex/workspace/code_review/vehicle_localization/wheel_odometry_processor.c
+
+CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /Users/alex/workspace/code_review/vehicle_localization/wheel_odometry_processor.c > CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.i
+
+CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /Users/alex/workspace/code_review/vehicle_localization/wheel_odometry_processor.c -o CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.s
+
 # Object files for target localization_lib
 localization_lib_OBJECTS = \
 "CMakeFiles/localization_lib.dir/motion_model.c.o" \
 "CMakeFiles/localization_lib.dir/kalman_filter.c.o" \
 "CMakeFiles/localization_lib.dir/rtk_calibration.c.o" \
-"CMakeFiles/localization_lib.dir/localization_system.c.o"
+"CMakeFiles/localization_lib.dir/localization_system.c.o" \
+"CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o"
 
 # External object files for target localization_lib
 localization_lib_EXTERNAL_OBJECTS =
@@ -142,9 +157,10 @@ lib/liblocalization_lib.a: CMakeFiles/localization_lib.dir/motion_model.c.o
 lib/liblocalization_lib.a: CMakeFiles/localization_lib.dir/kalman_filter.c.o
 lib/liblocalization_lib.a: CMakeFiles/localization_lib.dir/rtk_calibration.c.o
 lib/liblocalization_lib.a: CMakeFiles/localization_lib.dir/localization_system.c.o
+lib/liblocalization_lib.a: CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o
 lib/liblocalization_lib.a: CMakeFiles/localization_lib.dir/build.make
 lib/liblocalization_lib.a: CMakeFiles/localization_lib.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/alex/workspace/code_review/vehicle_localization/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Linking C static library lib/liblocalization_lib.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/alex/workspace/code_review/vehicle_localization/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Linking C static library lib/liblocalization_lib.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/localization_lib.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/localization_lib.dir/link.txt --verbose=$(VERBOSE)
 

@@ -7,6 +7,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/localization_lib.dir/motion_model.c.o.d"
   "CMakeFiles/localization_lib.dir/rtk_calibration.c.o"
   "CMakeFiles/localization_lib.dir/rtk_calibration.c.o.d"
+  "CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o"
+  "CMakeFiles/localization_lib.dir/wheel_odometry_processor.c.o.d"
   "lib/liblocalization_lib.a"
   "lib/liblocalization_lib.pdb"
 )

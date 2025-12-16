@@ -32,6 +32,7 @@ CMakeFiles/localization_example.dir/example_usage.c.o: \
   /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/17/include/stdbool.h \
   /Users/alex/workspace/code_review/vehicle_localization/kalman_filter.h \
   /Users/alex/workspace/code_review/vehicle_localization/rtk_calibration.h \
+  /Users/alex/workspace/code_review/vehicle_localization/wheel_odometry_processor.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/stdio.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/_stdio.h \
   /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/_bounds.h \

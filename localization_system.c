@@ -70,6 +70,20 @@ int localization_system_init(LocalizationSystem_t *sys,
     /* 初始化诊断信息 */
     memset(&sys->diagnostics, 0, sizeof(sys->diagnostics));
     
+    /* 初始化轮速处理器 - 使用默认配置 */
+    WheelConfig_t default_wheel_config = {
+        .pulses_per_wheel_rev = 400,    /* 常见的400脉冲/圈 */
+        .wheel_radius = 0.35,           /* 典型轮半径 */
+        .low_speed_threshold = 0.3,     /* 低速阈值 */
+        .pulse_timeout_ms = 500         /* 超时检测 */
+    };
+    
+    if (wheel_odometry_processor_init(&sys->wheel_processor, &default_wheel_config) != 0) {
+        return -1;
+    }
+    
+    sys->wheel_config = default_wheel_config;
+    
     sys->is_initialized = true;
     sys->operation_timestamp = 0;
     
@@ -95,6 +109,16 @@ int localization_system_process(LocalizationSystem_t *sys,
     /* 提取控制输入 */
     double velocity = sensor_data->wheel_odometry.velocity;
     double steering_angle = sensor_data->steering.steering_angle;
+    
+    /* 
+     * 注意：如果用户通过 update_wheel_pulse() 或 update_wheel_velocity() 更新了
+     * 轮速数据，建议在调用本函数前获取处理后的轮速数据并更新 sensor_data
+     * 示例：
+     *   localization_system_update_wheel_pulse(sys, pulse_count, timestamp);
+     *   WheelOdometryData_t processed_odometry;
+     *   localization_system_get_wheel_odometry(sys, &processed_odometry);
+     *   sensor_data.wheel_odometry = processed_odometry;
+     */
     
     /* ===== 步骤1：更新转向角过滤器 ===== */
     if (steering_jitter_filter_update(&sys->kalman_filter.steering_filter, 
@@ -268,4 +292,87 @@ void localization_system_reset_steering_filter(LocalizationSystem_t *sys) {
     }
     
     steering_jitter_filter_reset(&sys->kalman_filter.steering_filter);
+}
+
+/* ========== 轮速脉冲处理接口 ========== */
+
+int localization_system_set_wheel_config(LocalizationSystem_t *sys,
+                                        const WheelConfig_t *config) {
+    if (!sys || !config || !sys->is_initialized) {
+        return -1;
+    }
+    
+    sys->wheel_config = *config;
+    return wheel_odometry_processor_init(&sys->wheel_processor, config);
+}
+
+int localization_system_update_wheel_pulse(LocalizationSystem_t *sys,
+                                          uint32_t pulse_count,
+                                          uint32_t timestamp) {
+    if (!sys || !sys->is_initialized) {
+        return -1;
+    }
+    
+    WheelOdometryData_t odometry;
+    if (wheel_odometry_processor_update(&sys->wheel_processor, 
+                                       pulse_count, 
+                                       timestamp, 
+                                       &odometry) != 0) {
+        return -1;
+    }
+    
+    /* 将处理后的轮速数据保存到系统状态 */
+    /* 注意：这里不直接修改 sensor_data，而是供 localization_system_process 使用 */
+    sys->operation_timestamp = timestamp;
+    
+    return 0;
+}
+
+int localization_system_update_wheel_velocity(LocalizationSystem_t *sys,
+                                             double velocity,
+                                             uint32_t timestamp) {
+    if (!sys || !sys->is_initialized) {
+        return -1;
+    }
+    
+    WheelOdometryData_t odometry;
+    if (wheel_odometry_processor_set_velocity(&sys->wheel_processor,
+                                             velocity,
+                                             timestamp,
+                                             &odometry) != 0) {
+        return -1;
+    }
+    
+    sys->operation_timestamp = timestamp;
+    
+    return 0;
+}
+
+int localization_system_get_wheel_odometry(const LocalizationSystem_t *sys,
+                                           WheelOdometryData_t *odometry) {
+    if (!sys || !odometry || !sys->is_initialized) {
+        return -1;
+    }
+    
+    /* 直接从处理器获取最新的轮速数据 */
+    odometry->velocity = sys->wheel_processor.last_velocity;
+    odometry->distance = sys->wheel_processor.accumulated_distance;
+    odometry->timestamp = sys->wheel_processor.last_timestamp;
+    
+    return 0;
+}
+
+bool localization_system_wheel_is_timeout(const LocalizationSystem_t *sys) {
+    if (!sys) {
+        return true;
+    }
+    return wheel_odometry_processor_is_timeout(&sys->wheel_processor);
+}
+
+int localization_system_reset_wheel_processor(LocalizationSystem_t *sys) {
+    if (!sys || !sys->is_initialized) {
+        return -1;
+    }
+    
+    return wheel_odometry_processor_reset(&sys->wheel_processor);
 }
