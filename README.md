@@ -1,0 +1,362 @@
+# 车辆定位系统 (Vehicle Localization System)
+
+## 📋 项目简介
+
+一套完整的车辆定位解决方案，专门针对**自动泊车场景**（0.5 m/s ~ 2.0 m/s）设计。采用多传感器融合（轮速计、IMU、转向角）和扩展卡尔曼滤波算法，并集成RTK高精度校准功能。
+
+## 🎯 核心特性
+
+- ✅ **多传感器融合**：轮速计 + IMU + 转向角 + RTK GNSS
+- ✅ **低速优化**：专为自动泊车场景优化（0.5-2.0 m/s）
+- ✅ **前后退支持**：运动模型支持前进和后退场景
+- ✅ **RTK标定**：基于RTK的在线/离线校准功能
+- ✅ **自适应滤波**：轮滑动检测和自适应噪声调整
+- ✅ **生产级代码**：C语言实现，嵌入式友好
+
+## 📁 文件结构
+
+```
+vehicle_localization/
+│
+├─ 📘 文档
+│  ├── README.md                       # 本文件
+│  ├── low_speed_localization_guide.md # 理论基础和算法说明
+│  ├── C_IMPLEMENTATION_GUIDE.md       # C代码详细说明
+│  └── INTEGRATION_GUIDE.md            # 集成和部署指南
+│
+├─ 🐍 Python参考实现（原型开发）
+│  └── localization_system.py          # Python EKF实现
+│
+├─ 🔧 C生产实现（嵌入式部署）
+│  ├── localization_types.h            # 数据类型定义
+│  ├── motion_model.h/c                # 运动学模型
+│  ├── kalman_filter.h/c               # 扩展卡尔曼滤波
+│  ├── rtk_calibration.h/c             # RTK标定模块
+│  ├── localization_system.h/c         # 高层系统接口
+│  ├── example_usage.c                 # 使用示例程序
+│  └── Makefile                        # 编译配置
+│
+└─ 📚 其他
+   └── localization_system_private.h   # 私有头文件
+```
+
+## 🚀 快速开始
+
+### 方案A：Python快速原型开发
+
+```bash
+# 检查Python实现
+cat localization_system.py
+
+# 查看理论指南
+cat low_speed_localization_guide.md
+```
+
+### 方案B：C生产级部署
+
+```bash
+# 编译系统
+make clean
+make
+
+# 运行示例（模拟J形泊车轨迹）
+make run
+
+# 仅编译特定模块
+make test_motion
+make test_filter
+make test_rtk
+
+# 清理构建
+make clean
+```
+
+## 📊 系统架构
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                 定位系统（LocalizationSystem）           │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐             │
+│  │ 轮速计   │  │   IMU    │  │ 转向角   │             │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘             │
+│       │             │             │                   │
+│       └─────────────┼─────────────┘                   │
+│                     │ 传感器数据融合                   │
+│                     ▼                                  │
+│        ┌────────────────────────────┐                │
+│        │  扩展卡尔曼滤波 (EKF)       │                │
+│        │  - 预测步骤                │                │
+│        │  - 更新步骤                │                │
+│        │  - 自适应噪声              │                │
+│        └────────────┬───────────────┘                │
+│                     │                                 │
+│          ┌──────────┴──────────┐                     │
+│          ▼                     ▼                      │
+│    ┌──────────────┐    ┌──────────────┐            │
+│    │ 位置估计     │    │ RTK标定模块  │            │
+│    │(x, y, θ)    │    │ - 收集点      │            │
+│    └──────────────┘    │ - 校准参数    │            │
+│                        │ - 在线更新    │            │
+│                        └──────────────┘            │
+│                                                     │
+└─────────────────────────────────────────────────────────┘
+```
+
+## 🧮 核心算法
+
+### 运动模型（支持前后退）
+
+$$x_{k+1} = x_k + |v| \cos(\theta_k + \text{sign}(v)\delta) \Delta t$$
+$$y_{k+1} = y_k + |v| \sin(\theta_k + \text{sign}(v)\delta) \Delta t$$
+$$\theta_{k+1} = \theta_k + \frac{\text{sign}(v)|v|\tan(\delta)}{L} \Delta t$$
+
+### 状态向量
+$$\mathbf{x} = [x, y, \theta, v, \delta]^T$$
+- x, y：车辆位置
+- θ：航向角
+- v：速度
+- δ：转向角
+
+### 卡尔曼滤波
+- **预测**：基于运动模型预测下一状态
+- **更新**：融合传感器测量进行校正
+
+## 🔧 使用示例
+
+### C语言集成
+
+```c
+#include "localization_system.h"
+
+int main() {
+    // 1. 初始化系统
+    LocalizationSystem_t sys;
+    VehicleState_t init_state = {.x=0, .y=0, .theta=0};
+    localization_system_init(&sys, &init_state);
+    
+    // 2. 主循环
+    while (1) {
+        // 读取传感器
+        SensorReadings_t readings = get_sensor_data();
+        
+        // 执行定位
+        VehicleState_t state;
+        localization_system_process(&sys, &readings, &state);
+        
+        printf("Pos: (%.2f, %.2f), Heading: %.2f°\n", 
+               state.x, state.y, RAD_TO_DEG(state.theta));
+        
+        // RTK校准（可选）
+        if (has_rtk_data()) {
+            RTKData_t rtk = read_rtk();
+            localization_system_add_rtk_calibration(&sys, &rtk);
+        }
+    }
+    
+    // 3. 清理
+    localization_system_free(&sys);
+    return 0;
+}
+```
+
+### Python算法验证
+
+```python
+from localization_system import LowSpeedLocalizationSystem, SensorReading
+
+# 初始化
+system = LowSpeedLocalizationSystem()
+
+# 处理传感器数据
+reading = SensorReading(
+    wheel_velocity=1.0,
+    imu_accel_x=0.05,
+    imu_accel_y=0.05,
+    imu_gyro_z=0.01,
+    steering_angle=0.1,
+    timestamp=1000
+)
+
+state = system.run_step(reading)
+print(f"位置: ({state.x:.2f}, {state.y:.2f}) m")
+print(f"航向: {state.theta:.2f} rad")
+```
+
+## 📈 性能指标
+
+| 指标 | 目标值 | 说明 |
+|------|-------|------|
+| **位置精度** | < 0.1 m | 1秒内累计误差 |
+| **航向精度** | < 2° | 航向角误差 |
+| **响应延迟** | < 100 ms | 转向响应 |
+| **更新频率** | 20-50 Hz | 推荐频率 |
+| **静止漂移** | < 0.05 m/min | 长期静止 |
+| **RTK校准后** | < 0.05 m | 高精度 |
+
+## 🎓 详细文档
+
+### 📘 理论基础
+- 启程模式分析
+- 卡尔曼滤波原理
+- 低速特异性处理
+- 参考文献
+
+👉 详见 [low_speed_localization_guide.md](low_speed_localization_guide.md)
+
+### 🔧 C实现详解
+- 数据结构设计
+- 算法实现细节
+- 矩阵运算
+- 内存优化
+- 实时性考虑
+
+👉 详见 [C_IMPLEMENTATION_GUIDE.md](C_IMPLEMENTATION_GUIDE.md)
+
+### 🚀 集成部署
+- 硬件接口
+- 传感器集成
+- 校准流程
+- 性能调优
+- 故障诊断
+
+👉 详见 [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)
+
+## 💾 传感器要求
+
+### 轮速计（Wheel Odometer）
+- 频率：20-50 Hz
+- 精度：±2%
+- 输出：速度 (m/s)
+
+### IMU（Inertial Measurement Unit）
+- 频率：>100 Hz
+- 加速度计：±10 g
+- 陀螺仪：±500 °/s
+
+### 转向角传感器
+- 频率：50 Hz
+- 精度：±0.5°
+- 范围：±35°
+
+### RTK GNSS（可选，用于校准）
+- 精度：< 0.1 m
+- 频率：1-10 Hz
+- 质量指示：0-5（推荐≥2）
+
+## 📋 RTK校准工作流程
+
+```
+1. 数据收集阶段
+   运行车辆在典型轨迹上移动
+   同时收集RTK数据（≥10个点）
+   ↓
+2. 离线计算
+   计算轮速计校准因子
+   估计转向角零偏
+   ↓
+3. 应用校准
+   更新定位系统的校准参数
+   验证校准质量
+   ↓
+4. 验证结果
+   比对RTK和里程计位置
+   目标误差：< 0.1 m
+```
+
+## 🛠 编译选项
+
+```bash
+# 使用GCC编译
+CC = gcc
+CFLAGS = -Wall -Wextra -O2 -std=c99 -lm
+
+# 支持的选项
+make              # 编译所有
+make run          # 编译并运行示例
+make clean        # 清理构建文件
+make test_motion  # 编译运动模型测试
+make test_filter  # 编译滤波器测试
+make test_rtk     # 编译RTK模块测试
+```
+
+## 📱 硬件要求
+
+### 最低配置
+- **处理器**：ARM Cortex-M4 (168 MHz)
+- **内存**：RAM > 20 KB，Flash > 100 KB
+- **实时性**：支持50 Hz 运行
+
+### 推荐配置
+- **处理器**：ARM Cortex-A9 或更高
+- **内存**：RAM > 100 MB
+- **系统**：Linux / RTOS
+
+## 📊 代码统计
+
+| 模块 | 代码量 | 说明 |
+|------|--------|------|
+| 运动模型 | ~200 行 | 单轨模型实现 |
+| 卡尔曼滤波 | ~600 行 | EKF核心算法 |
+| RTK标定 | ~400 行 | 标定管理器 |
+| 系统集成 | ~300 行 | 高层接口 |
+| 示例程序 | ~300 行 | 完整示例 |
+| **总计** | **~1800 行** | C代码 |
+
+## 🐛 故障排查
+
+### 位置持续漂移
+→ 检查RTK标定、增加过程噪声、验证IMU零偏
+
+### 转向响应慢
+→ 减少转向角测量噪声、增加过程噪声
+
+### 后退不准确  
+→ 收集后退RTK数据、调整运动模型参数
+
+👉 详见 [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) 中的故障诊断部分
+
+## 📚 相关资源
+
+### 经典文献
+- Thrun, S., et al. (2005) "Probabilistic Robotics"
+- Bar-Shalom, Y., et al. (2001) "Estimation with Applications"
+
+### 标准规范
+- SAE J2945: Vehicle-to-Everything (V2X)
+- ISO 19141: Road vehicles - Automated driving
+
+## 🎯 应用场景
+
+- ✅ 自动泊车系统（APS）
+- ✅ 高级驾驶辅助（ADAS）
+- ✅ 自主配送车辆
+- ✅ 无人搬运车（AGV）
+- ✅ 车库管理系统
+
+## 📝 版本和维护
+
+- **当前版本**：1.0
+- **最后更新**：2024年12月
+- **维护者**：Vehicle Localization Team
+
+## 📄 许可证
+
+本项目提供参考实现，可自由使用和修改。
+
+---
+
+## 🤝 快速导航
+
+| 需求 | 推荐阅读 |
+|-----|--------|
+| 了解理论 | [low_speed_localization_guide.md](low_speed_localization_guide.md) |
+| Python原型 | [localization_system.py](localization_system.py) |
+| C集成开发 | [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) |
+| 代码详解 | [C_IMPLEMENTATION_GUIDE.md](C_IMPLEMENTATION_GUIDE.md) |
+| 快速示例 | [example_usage.c](example_usage.c) |
+
+---
+
+**开始使用**: 根据你的需求选择Python或C实现，参考对应的集成指南进行开发。
