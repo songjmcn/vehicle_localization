@@ -67,38 +67,6 @@ void simulate_sensor_data(uint32_t step, SensorReadings_t *sensor_data) {
 }
 
 /**
- * @brief 模拟RTK数据的生成函数
- */
-void simulate_rtk_data(uint32_t step, RTKData_t *rtk_data) {
-    /* RTK每100个周期（5秒）提供一次更新 */
-    if (step % 100 == 0) {
-        /* 基于实际轨迹的RTK数据 */
-        rtk_data->timestamp = step * 50 + 1000;
-        rtk_data->quality = 4;  /* 很好的质量 */
-        
-        if (step < 2000) {
-            /* 直行阶段 */
-            rtk_data->x = 0.0 + (step / 2000.0) * 100.0;
-            rtk_data->y = 0.0;
-            rtk_data->heading = 0.0;
-        } else if (step < 2600) {
-            /* 转向和后退阶段 */
-            double turn_progress = (step - 2000) / 600.0;
-            rtk_data->x = 100.0 - turn_progress * 30.0 * sin(turn_progress * PI/2);
-            rtk_data->y = turn_progress * 30.0 * (1 - cos(turn_progress * PI/2));
-            rtk_data->heading = turn_progress * PI/2;
-        } else {
-            /* 停止阶段 */
-            rtk_data->x = 100.0 - 21.2;
-            rtk_data->y = 30.0;
-            rtk_data->heading = PI/2;
-        }
-        
-        rtk_data->z = 0.0;
-    }
-}
-
-/**
  * @brief 打印定位结果
  */
 void print_localization_result(uint32_t step, const VehicleState_t *state, 
@@ -229,42 +197,13 @@ int main() {
         
         /* 打印结果 */
         print_localization_result(step, &estimated_state, &diag);
-        
-        /* 模拟RTK标定（每5秒一次） */
-        if (step % 100 == 0 && step > 0) {
-            RTKData_t rtk_data;
-            memset(&rtk_data, 0, sizeof(rtk_data));
-            simulate_rtk_data(step, &rtk_data);
-            
-            if (rtk_data.quality > 0) {
-                if (localization_system_add_rtk_calibration(&localization_sys, &rtk_data) == 0) {
-                    printf("  ✓ RTK calibration point %u added (quality: %u)\n",
-                           step / 100, rtk_data.quality);
-                }
-            }
-        }
     }
     
     printf("\n───────────────────────────────────────────────────────\n");
-    
-    /* 计算并应用RTK校准 */
-    printf("\nApplying RTK calibration...\n");
-    if (localization_system_apply_rtk_calibration(&localization_sys) == 0) {
-        printf("✓ RTK calibration applied successfully\n");
-        
-        double avg_pos_error = rtk_calibration_get_avg_position_error(&localization_sys.rtk_calibration);
-        double avg_heading_error = rtk_calibration_get_avg_heading_error(&localization_sys.rtk_calibration);
-        
-        printf("  Average position error: %.3f m\n", avg_pos_error);
-        printf("  Average heading error: %.3f rad (%.2f deg)\n", 
-               avg_heading_error, RAD_TO_DEG(avg_heading_error));
-        printf("  Wheel calibration factor: %.4f\n", 
-               localization_sys.calibration.wheel_calibration_factor);
-        printf("  Steering angle offset: %.4f rad\n",
-               localization_sys.calibration.steering_angle_offset);
-    } else {
-        printf("✗ RTK calibration failed (insufficient calibration points)\n");
-    }
+    printf("Note: RTK Online Update is disabled.\n");
+    printf("Only offline RTK calibration for parameter estimation is available.\n");
+    printf("See WHEEL_PULSE_INTEGRATION.md and INTEGRATION_GUIDE.md for calibration methods.\n");
+    printf("───────────────────────────────────────────────────────\n");
     
     /* 最终状态 */
     printf("\nFinal localization result:\n");

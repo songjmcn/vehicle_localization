@@ -63,16 +63,25 @@ void localization_system_get_state(const LocalizationSystem_t *sys,
 DiagnosticsInfo_t localization_system_get_diagnostics(const LocalizationSystem_t *sys);
 
 /**
- * @brief 添加RTK标定点
+ * @brief 计算并应用RTK标定参数（离线标定，不在线融合）
+ * 
+ * 用于离线标定轮速计校准因子等参数，不是实时RTK融合定位。
+ * 标定过程：
+ *   1. 记录轮速里程计和RTK的位置
+ *   2. 比较两者误差
+ *   3. 计算校准参数
+ * 
  * @param sys 系统指针
- * @param rtk_state RTK状态
+ * @param odometry_state 里程计估计的状态
+ * @param rtk_state RTK测量的状态
  * @return 0成功，-1失败
  */
-int localization_system_add_rtk_calibration(LocalizationSystem_t *sys,
-                                           const RTKData_t *rtk_state);
+int localization_system_rtk_calibration_add_point(LocalizationSystem_t *sys,
+                                                  const VehicleState_t *odometry_state,
+                                                  const RTKData_t *rtk_state);
 
 /**
- * @brief 计算并应用RTK标定参数
+ * @brief 离线标定完成，计算标定参数
  * @param sys 系统指针
  * @return 0成功，-1失败
  */

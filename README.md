@@ -173,10 +173,12 @@ int main() {
         printf("Pos: (%.2f, %.2f), Heading: %.2f°\n", 
                state.x, state.y, RAD_TO_DEG(state.theta));
         
-        // RTK校准（可选）
+        // RTK离线校准（可选）
+        // 收集里程计和RTK数据进行离线标定
         if (has_rtk_data()) {
             RTKData_t rtk = read_rtk();
-            localization_system_add_rtk_calibration(&sys, &rtk);
+            VehicleState_t odometry = localization_system_get_state(&sys);  // 获取里程计估计
+            localization_system_rtk_calibration_add_point(&sys, &odometry, &rtk);
         }
     }
     

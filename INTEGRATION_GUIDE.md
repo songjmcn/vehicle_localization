@@ -196,7 +196,8 @@ int main(void) {
         if (++rtk_counter >= 250) {  // 250 * 20ms = 5s
             RTKData_t rtk = read_rtk();
             if (rtk.quality > 0) {
-                localization_system_add_rtk_calibration(&loc_sys, &rtk);
+                VehicleState_t odo = localization_system_get_state(&loc_sys);
+                localization_system_rtk_calibration_add_point(&loc_sys, &odo, &rtk);
             }
             rtk_counter = 0;
         }
@@ -230,7 +231,8 @@ for (int i = 0; i < 1000; i++) {
     if (i % 200 == 0) {  // 每4秒收集一个RTK点
         RTKData_t rtk = read_rtk();
         if (rtk.quality >= 2) {
-            localization_system_add_rtk_calibration(&loc_sys, &rtk);
+            VehicleState_t odo = localization_system_get_state(&loc_sys);
+            localization_system_rtk_calibration_add_point(&loc_sys, &odo, &rtk);
         }
     }
 }

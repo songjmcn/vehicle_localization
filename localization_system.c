@@ -182,19 +182,22 @@ DiagnosticsInfo_t localization_system_get_diagnostics(const LocalizationSystem_t
     return sys->diagnostics;
 }
 
-int localization_system_add_rtk_calibration(LocalizationSystem_t *sys,
-                                           const RTKData_t *rtk_state) {
-    if (!sys || !rtk_state) {
+/**
+ * @brief RTK离线标定 - 添加一个标定点
+ * 
+ * 用于离线标定过程，收集多个点然后计算标定参数。
+ * 不在实时定位过程中进行RTK融合。
+ */
+int localization_system_rtk_calibration_add_point(LocalizationSystem_t *sys,
+                                                  const VehicleState_t *odometry_state,
+                                                  const RTKData_t *rtk_state) {
+    if (!sys || !odometry_state || !rtk_state) {
         return -1;
     }
     
-    /* 获取当前里程计状态 */
-    VehicleState_t odometry_state;
-    kalman_filter_get_state(&sys->kalman_filter, &odometry_state);
-    
     /* 添加标定点 */
     return rtk_calibration_add_point(&sys->rtk_calibration, 
-                                     &odometry_state, 
+                                     odometry_state, 
                                      rtk_state);
 }
 

@@ -102,13 +102,17 @@ printf("Position: (%.2f, %.2f) m\n", estimated_state.x, estimated_state.y);
 printf("Heading: %.2f rad\n", estimated_state.theta);
 ```
 
-### RTK标定
+### RTK离线标定
 
 ```c
 // 收集标定数据（多个点）
 RTKData_t rtk_data;
 // 填充rtk_data...
-localization_system_add_rtk_calibration(&localization_sys, &rtk_data);
+// 获取里程计估计状态
+VehicleState_t odometry_state;
+localization_system_get_state(&localization_sys, &odometry_state);
+// 添加RTK标定点（离线模式：需要同时提供里程计和RTK状态）
+localization_system_rtk_calibration_add_point(&localization_sys, &odometry_state, &rtk_data);
 
 // 计算并应用校准参数
 localization_system_apply_rtk_calibration(&localization_sys);
@@ -192,7 +196,8 @@ for (int i = 0; i < num_readings; i++) {
     // 获取RTK数据（GPS频率通常为1-10 Hz）
     RTKData_t rtk_data = get_rtk_reading();
     if (rtk_data.quality >= 2) {  // 质量检查
-        localization_system_add_rtk_calibration(&localization_sys, &rtk_data);
+        VehicleState_t odometry = localization_system_get_state(&localization_sys);
+        localization_system_rtk_calibration_add_point(&localization_sys, &odometry, &rtk_data);
     }
 }
 ```
