@@ -52,7 +52,30 @@ cat localization_system.py
 cat low_speed_localization_guide.md
 ```
 
-### 方案B：C生产级部署
+### 方案B：C生产级部署（CMake - 推荐）⭐
+
+```bash
+# 一行命令快速开始
+./cmake_build.sh build && ./cmake_build.sh run
+
+# 或分步骤操作
+./cmake_build.sh build         # 编译（Release）
+./cmake_build.sh build-debug   # Debug编译（带调试符号）
+./cmake_build.sh run           # 运行程序
+./cmake_build.sh clean         # 清除编译产物
+./cmake_build.sh rebuild       # 清除后重新编译
+./cmake_build.sh help          # 查看所有命令
+```
+
+**CMake优势**：
+- ✅ 跨平台支持（macOS/Linux/Windows）
+- ✅ IDE完整集成（VS Code、CLion、Visual Studio）
+- ✅ 灵活的编译配置
+- ✅ 自动并行编译
+
+👉 详见 [CMAKE_QUICK_REFERENCE.md](CMAKE_QUICK_REFERENCE.md) 快速参考卡片
+
+### 方案C：传统Makefile（向后兼容）
 
 ```bash
 # 编译系统
@@ -70,6 +93,8 @@ make test_rtk
 # 清理构建
 make clean
 ```
+
+👉 CMake 和 Makefile 详细对比见 [CMAKE_vs_MAKEFILE.md](CMAKE_vs_MAKEFILE.md)
 
 ## 📊 系统架构
 
@@ -197,7 +222,26 @@ print(f"航向: {state.theta:.2f} rad")
 
 ## 🎓 详细文档
 
-### 📘 理论基础
+### � 详细文档
+
+### 🏗️ 构建系统（新增CMake）
+
+**CMake 现代构建系统文档**：
+- [CMAKE_QUICK_REFERENCE.md](CMAKE_QUICK_REFERENCE.md) - 快速参考卡片（5分钟）
+- [CMAKE_STRUCTURE.md](CMAKE_STRUCTURE.md) - 工程结构说明（15分钟）
+- [CMAKE_BUILD_GUIDE.md](CMAKE_BUILD_GUIDE.md) - 详细使用指南（20分钟）✨
+- [CMAKE_vs_MAKEFILE.md](CMAKE_vs_MAKEFILE.md) - 工具对比分析（10分钟）
+- [CMAKE_CHECKLIST.md](CMAKE_CHECKLIST.md) - 完成检查清单（10分钟）
+- [CMAKE_OVERVIEW.md](CMAKE_OVERVIEW.md) - 总体概览（5分钟）
+
+**推荐阅读顺序**：
+1. 新手 → CMAKE_QUICK_REFERENCE.md
+2. IDE开发者 → CMAKE_STRUCTURE.md §IDE集成
+3. 深入学习 → CMAKE_BUILD_GUIDE.md
+
+### 📖 定位系统核心文档
+
+#### 理论基础
 - 启程模式分析
 - 卡尔曼滤波原理
 - 低速特异性处理
@@ -205,7 +249,7 @@ print(f"航向: {state.theta:.2f} rad")
 
 👉 详见 [low_speed_localization_guide.md](low_speed_localization_guide.md)
 
-### 🔧 C实现详解
+#### C实现详解
 - 数据结构设计
 - 算法实现细节
 - 矩阵运算
@@ -214,7 +258,7 @@ print(f"航向: {state.theta:.2f} rad")
 
 👉 详见 [C_IMPLEMENTATION_GUIDE.md](C_IMPLEMENTATION_GUIDE.md)
 
-### 🚀 集成部署
+#### 集成部署
 - 硬件接口
 - 传感器集成
 - 校准流程
@@ -222,6 +266,53 @@ print(f"航向: {state.theta:.2f} rad")
 - 故障诊断
 
 👉 详见 [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)
+
+### 🔧 参数标定和调参指南（重要！）⭐
+
+**完整的参数标定指南**：
+
+- [PARAMETER_CALIBRATION_GUID.MD](PARAMETER_CALIBRATION_GUID.md) - **2500行详细指南** ✨
+  
+  包含5个完整部分：
+  
+  **Part 1：参数体系总览 + 转向过滤参数**
+  - 22个参数分类
+  - 优先级划分
+  - filter_alpha（转向滤波系数）详解
+  - jitter_threshold（抖动检测）详解
+  
+  **Part 2：卡尔曼滤波过程噪声参数（Q矩阵）**
+  - q_x, q_y：位置过程噪声
+  - q_theta：航向过程噪声
+  - q_v：速度过程噪声（低速关键参数）
+  - q_delta：转向过程噪声
+  - 3个场景推荐配置
+  
+  **Part 3：卡尔曼滤波测量噪声参数（R矩阵）⭐必须标定**
+  - r_wheel：轮速测量噪声
+  - r_imu：IMU加速度测量噪声
+  - r_steering：转向角测量噪声
+  - 3种标定方法对比
+  
+  **Part 4：传感器校准参数**
+  - wheel_calibration_factor：轮速校准
+  - steering_angle_offset/gain：转向校准
+  - imu_accel_*_bias/scale：IMU加速度校准
+  - imu_gyro_z_bias：陀螺仪零偏
+  - imu_mag_*_bias：磁强计校准
+  
+  **Part 5：调参决策树 + 实际工作流程**
+  - 故障症状诊断树
+  - 3阶段标定流程（快速→精细→验证）
+  - 22参数完整速查表
+  - 3种场景推荐参数集合
+  - 调参优先级速查表
+
+**快速使用建议**：
+- 首次标定：按 Part 5 的快速标定流程（30分钟）
+- 精细调参：参考 Part 2-4 的调参方法
+- 故障诊断：查询 Part 5 的决策树
+- 参数查阅：使用 Part 5 的速查表
 
 ## 💾 传感器要求
 
