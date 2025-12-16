@@ -6,10 +6,10 @@
 
 ## 🎯 核心特性
 
-- ✅ **多传感器融合**：轮速计 + IMU + 转向角 + RTK GNSS
+- ✅ **多传感器融合**：轮速计 + IMU + 转向角（实时定位）
 - ✅ **低速优化**：专为自动泊车场景优化（0.5-2.0 m/s）
 - ✅ **前后退支持**：运动模型支持前进和后退场景
-- ✅ **RTK标定**：基于RTK的在线/离线校准功能
+- ✅ **RTK离线标定**：基于RTK的离线参数标定功能（非实时融合）
 - ✅ **自适应滤波**：轮滑动检测和自适应噪声调整
 - ✅ **生产级代码**：C语言实现，嵌入式友好
 
@@ -19,10 +19,13 @@
 vehicle_localization/
 │
 ├─ 📘 文档
-│  ├── README.md                       # 本文件
-│  ├── low_speed_localization_guide.md # 理论基础和算法说明
-│  ├── C_IMPLEMENTATION_GUIDE.md       # C代码详细说明
-│  └── INTEGRATION_GUIDE.md            # 集成和部署指南
+│  ├── README.md                          # 本文件
+│  ├── low_speed_localization_guide.md    # 理论基础和算法说明
+│  ├── C_IMPLEMENTATION_GUIDE.md          # C代码详细说明
+│  ├── INTEGRATION_GUIDE.md               # 集成和部署指南
+│  ├── WHEEL_PULSE_INTEGRATION.md         # 轮脉冲处理集成指南
+│  ├── RTK_OFFLINE_CALIBRATION.md         # RTK离线标定工作流程
+│  └── PARAMETER_CALIBRATION_GUID.md      # 参数标定详细指南
 │
 ├─ 🐍 Python参考实现（原型开发）
 │  └── localization_system.py          # Python EKF实现
