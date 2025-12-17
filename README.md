@@ -36,8 +36,13 @@ vehicle_localization/
 │  ├── kalman_filter.h/c               # 扩展卡尔曼滤波
 │  ├── rtk_calibration.h/c             # RTK标定模块
 │  ├── localization_system.h/c         # 高层系统接口
+│  ├── wheel_odometry_processor.h/c    # 轮脉冲处理
 │  ├── example_usage.c                 # 使用示例程序
 │  └── Makefile                        # 编译配置
+│
+├─ 🛠️ 离线标定工具（CSV处理）
+│  ├── generate_calibration_csv.c      # 测试数据生成工具
+│  └── offline_calibration.c           # 离线参数计算工具
 │
 └─ 📚 其他
    └── localization_system_private.h   # 私有头文件
@@ -274,7 +279,20 @@ print(f"航向: {state.theta:.2f} rad")
 
 ### 🔧 参数标定和调参指南（重要！）⭐
 
-**完整的参数标定指南**：
+#### 离线CSV标定工具 🆕
+
+**快速标定工具链**（包含数据生成和参数计算）：
+
+- [CSV_CALIBRATION_QUICKSTART.md](CSV_CALIBRATION_QUICKSTART.md) - **快速开始指南** 
+  - 3步完成标定
+  - CSV格式说明
+  - 工具使用示例
+
+- **工具组件**：
+  - `generate_calibration_csv` - 生成模拟标定数据
+  - `offline_calibration` - 离线参数计算
+
+#### 完整的参数标定指南
 
 - [PARAMETER_CALIBRATION_GUID.MD](PARAMETER_CALIBRATION_GUID.md) - **2500行详细指南** ✨
   
