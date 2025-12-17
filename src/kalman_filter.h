@@ -17,6 +17,7 @@ typedef struct {
     CalibrationParams_t calibration;
     DiagnosticsInfo_t diagnostics;
     SteeringJitterFilter_t steering_filter;  /**< 转向角抖动过滤器 */
+    FusionConfig_t fusion_config;            /**< 融合算法配置(新增) */
 } KalmanFilter_t;
 
 /**
@@ -31,6 +32,21 @@ int kalman_filter_init(KalmanFilter_t *kf,
                        const VehicleState_t *initial_state,
                        const NoiseParameters_t *noise,
                        const CalibrationParams_t *calibration);
+
+/**
+ * @brief 以指定融合模式初始化卡尔曼滤波器(新增)
+ * @param kf 滤波器指针
+ * @param initial_state 初始状态
+ * @param noise 噪声参数
+ * @param calibration 校准参数
+ * @param fusion_config 融合配置
+ * @return 0成功，-1失败
+ */
+int kalman_filter_init_with_mode(KalmanFilter_t *kf,
+                                  const VehicleState_t *initial_state,
+                                  const NoiseParameters_t *noise,
+                                  const CalibrationParams_t *calibration,
+                                  const FusionConfig_t *fusion_config);
 
 /**
  * @brief 预测步骤
@@ -51,6 +67,22 @@ void kalman_filter_predict(KalmanFilter_t *kf,
  */
 void kalman_filter_update(KalmanFilter_t *kf,
                          const SensorReadings_t *sensor_data);
+
+/**
+ * @brief 基础融合算法：3维观测(车轮转角+轮速+IMU加速度)(新增)
+ * @param kf 滤波器指针
+ * @param sensor_data 传感器数据
+ */
+void kalman_filter_update_basic(KalmanFilter_t *kf,
+                                const SensorReadings_t *sensor_data);
+
+/**
+ * @brief IMU转向融合算法：4维观测(车轮转角+轮速+IMU加速度+IMU推导转向角)(新增)
+ * @param kf 滤波器指针
+ * @param sensor_data 传感器数据
+ */
+void kalman_filter_update_imu_steering(KalmanFilter_t *kf,
+                                       const SensorReadings_t *sensor_data);
 
 /**
  * @brief 获取当前状态估计

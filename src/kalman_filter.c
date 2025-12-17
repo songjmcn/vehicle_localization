@@ -157,6 +157,70 @@ static int matrix_inverse_5x5(double A[5][5], double A_inv[5][5]) {
     return 0;
 }
 
+/**
+ * @brief 4x4矩阵求逆（高斯消元法）(新增)
+ */
+static int matrix_inverse_4x4(double A[4][4], double A_inv[4][4]) {
+    double temp[4][8];
+    
+    /* 构造增广矩阵 [A | I] */
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            temp[i][j] = A[i][j];
+            temp[i][j + 4] = (i == j) ? 1.0 : 0.0;
+        }
+    }
+    
+    /* 高斯消元 */
+    for (int i = 0; i < 4; i++) {
+        /* 找主元 */
+        int pivot = i;
+        for (int k = i + 1; k < 4; k++) {
+            if (fabs(temp[k][i]) > fabs(temp[pivot][i])) {
+                pivot = k;
+            }
+        }
+        
+        if (fabs(temp[pivot][i]) < 1e-10) {
+            return -1;  /* 矩阵奇异 */
+        }
+        
+        /* 行交换 */
+        if (pivot != i) {
+            for (int j = 0; j < 8; j++) {
+                double t = temp[i][j];
+                temp[i][j] = temp[pivot][j];
+                temp[pivot][j] = t;
+            }
+        }
+        
+        /* 主元化为1 */
+        double div = temp[i][i];
+        for (int j = 0; j < 8; j++) {
+            temp[i][j] /= div;
+        }
+        
+        /* 消元 */
+        for (int k = 0; k < 4; k++) {
+            if (k != i) {
+                double mul = temp[k][i];
+                for (int j = 0; j < 8; j++) {
+                    temp[k][j] -= mul * temp[i][j];
+                }
+            }
+        }
+    }
+    
+    /* 提取逆矩阵 */
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            A_inv[i][j] = temp[i][j + 4];
+        }
+    }
+    
+    return 0;
+}
+
 /* ========== 卡尔曼滤波器函数 ========== */
 
 int kalman_filter_init(KalmanFilter_t *kf,
@@ -198,6 +262,34 @@ int kalman_filter_init(KalmanFilter_t *kf,
     
     /* 初始化诊断信息 */
     memset(&kf->diagnostics, 0, sizeof(kf->diagnostics));
+    
+    /* 初始化融合配置为基础算法(新增) */
+    kf->fusion_config.mode = FUSION_MODE_BASIC;
+    kf->fusion_config.imu_steering_vel_threshold = 0.5f;
+    kf->fusion_config.imu_steering_weight = 1.0f;
+    kf->fusion_config.enable_adaptive_weighting = false;
+    
+    return 0;
+}
+
+/**
+ * @brief 以指定融合模式初始化卡尔曼滤波器(新增)
+ */
+int kalman_filter_init_with_mode(KalmanFilter_t *kf,
+                                  const VehicleState_t *initial_state,
+                                  const NoiseParameters_t *noise,
+                                  const CalibrationParams_t *calibration,
+                                  const FusionConfig_t *fusion_config) {
+    /* 首先调用基础初始化 */
+    int result = kalman_filter_init(kf, initial_state, noise, calibration);
+    if (result != 0) {
+        return result;
+    }
+    
+    /* 设置融合配置(新增) */
+    if (fusion_config) {
+        kf->fusion_config = *fusion_config;
+    }
     
     return 0;
 }
@@ -287,6 +379,29 @@ void kalman_filter_predict(KalmanFilter_t *kf,
 
 void kalman_filter_update(KalmanFilter_t *kf,
                          const SensorReadings_t *sensor_data) {
+    if (!kf || !sensor_data) {
+        return;
+    }
+    
+    /* 根据融合模式选择算法(新增) */
+    switch (kf->fusion_config.mode) {
+        case FUSION_MODE_BASIC:
+            kalman_filter_update_basic(kf, sensor_data);
+            break;
+        case FUSION_MODE_IMU_STEERING:
+            kalman_filter_update_imu_steering(kf, sensor_data);
+            break;
+        default:
+            kalman_filter_update_basic(kf, sensor_data);  /* 默认基础算法 */
+            break;
+    }
+}
+
+/**
+ * @brief 基础融合算法：3维观测(车轮转角+轮速+IMU加速度)(新增)
+ */
+void kalman_filter_update_basic(KalmanFilter_t *kf,
+                                const SensorReadings_t *sensor_data) {
     if (!kf || !sensor_data) {
         return;
     }
@@ -413,6 +528,208 @@ void kalman_filter_update(KalmanFilter_t *kf,
         for (int j = 0; j < 5; j++) {
             double KH = 0;
             for (int k = 0; k < 3; k++) {
+                KH += K[i][k] * H[k][j];
+            }
+            I_KH[i][j] = (i == j ? 1.0 : 0.0) - KH;
+        }
+    }
+    
+    double P_new[5][5] = {0};
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 5; j++) {
+            for (int k = 0; k < 5; k++) {
+                P_new[i][j] += I_KH[i][k] * kf->state.P[k][j];
+            }
+        }
+    }
+    
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 5; j++) {
+            kf->state.P[i][j] = P_new[i][j];
+        }
+    }
+    
+    kf->diagnostics.update_count++;
+}
+
+/**
+ * @brief IMU转向融合算法：4维观测(车轮转角+轮速+IMU加速度+IMU推导转向角)(新增)
+ */
+void kalman_filter_update_imu_steering(KalmanFilter_t *kf,
+                                       const SensorReadings_t *sensor_data) {
+    if (!kf || !sensor_data) {
+        return;
+    }
+    
+    double v = sensor_data->wheel_odometry.velocity;
+    double accel_y = sensor_data->imu.accel_y;
+    
+    /* 检测轮滑动 */
+    double accel_mag = sqrt(sensor_data->imu.accel_x * sensor_data->imu.accel_x +
+                           sensor_data->imu.accel_y * sensor_data->imu.accel_y);
+    
+    kf->diagnostics.is_wheel_slipping = (accel_mag > WHEEL_SLIP_ACCEL_THRESHOLD);
+    kf->diagnostics.wheel_slip_accel = accel_mag;
+    
+    /* 检测静止 */
+    kf->diagnostics.is_stationary = (fabs(v) < V_STATIC_THRESHOLD);
+    
+    /* 提取或计算IMU推导转向角 */
+    double delta_imu = 0.0;
+    bool has_valid_imu_steering = false;
+    
+    if (fabs(v) > kf->fusion_config.imu_steering_vel_threshold) {
+        /* IMU横向加速度校准 */
+        double a_y_calibrated = (accel_y - kf->calibration.imu_lateral_accel_bias) 
+                              * kf->calibration.imu_lateral_accel_scale;
+        
+        /* 计算IMU推导转向角：δ_imu = arctan(a_y * L / v²) */
+        delta_imu = atan2(a_y_calibrated * WHEELBASE, v * v);
+        has_valid_imu_steering = true;
+    }
+    
+    /* 根据速度自适应权重调整 */
+    double imu_weight = kf->fusion_config.imu_steering_weight;
+    if (kf->fusion_config.enable_adaptive_weighting) {
+        /* 低速时降低IMU权重，高速时提高权重 */
+        if (fabs(v) < 2.0) {
+            imu_weight *= 0.5;
+        } else if (fabs(v) > 10.0) {
+            imu_weight *= 1.5;
+        }
+        imu_weight = (imu_weight > 1.0) ? 1.0 : imu_weight;
+    }
+    
+    if (!has_valid_imu_steering) {
+        /* 速度过低，退回到基础算法 */
+        kalman_filter_update_basic(kf, sensor_data);
+        return;
+    }
+    
+    /* 测量向量 [wheel_velocity, imu_accel_magnitude, steering_angle, imu_steering] */
+    double z[4] = {
+        v * kf->calibration.wheel_calibration_factor,
+        accel_mag,
+        sensor_data->steering.steering_angle - kf->calibration.steering_angle_offset,
+        delta_imu
+    };
+    
+    /* 测量噪声（4x4矩阵） */
+    double R[4][4] = {0};
+    R[0][0] = kf->noise.r_wheel * kf->noise.r_wheel;
+    R[1][1] = kf->noise.r_imu * kf->noise.r_imu;
+    R[2][2] = kf->noise.r_steering * kf->noise.r_steering;
+    R[3][3] = (kf->noise.r_imu_steering > 0) 
+             ? (kf->noise.r_imu_steering * kf->noise.r_imu_steering)
+             : (0.1 * 0.1);  /* 默认值 */
+    
+    /* 轮滑动时增加轮速计噪声权重 */
+    if (kf->diagnostics.is_wheel_slipping) {
+        R[0][0] *= 4.0;
+    }
+    
+    /* 降低IMU权重 */
+    R[3][3] /= (imu_weight * imu_weight + 0.01);  /* 避免除以零 */
+    
+    /* 测量模型的雅可比矩阵 H (4x5) */
+    double H[4][5] = {0};
+    H[0][3] = 1.0;  /* 轮速计测量速度 */
+    H[1][3] = 1.0;  /* IMU加速度与速度相关 */
+    H[2][4] = 1.0;  /* 转向角直接测量 */
+    H[3][4] = 1.0;  /* IMU推导转向角观测 */
+    
+    /* 预测测量值 */
+    double z_hat[4] = {
+        kf->state.x_hat[3],  /* 预测速度 */
+        0.0,                 /* IMU加速度（一阶模型为0） */
+        kf->state.x_hat[4],  /* 预测转向角 */
+        kf->state.x_hat[4]   /* 预测转向角同时作为IMU推导转向角预测 */
+    };
+    
+    /* 残差 */
+    double y[4];
+    y[0] = z[0] - z_hat[0];
+    y[1] = z[1] - z_hat[1];
+    y[2] = normalize_angle(z[2] - z_hat[2]);
+    y[3] = normalize_angle(z[3] - z_hat[3]);
+    
+    kf->diagnostics.residual_norm = sqrt(y[0]*y[0] + y[1]*y[1] + y[2]*y[2] + y[3]*y[3]);
+    
+    /* 卡尔曼增益计算：K = P * H^T * (H * P * H^T + R)^-1 */
+    
+    /* H * P */
+    double HP[4][5] = {0};
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 5; j++) {
+            for (int k = 0; k < 5; k++) {
+                HP[i][j] += H[i][k] * kf->state.P[k][j];
+            }
+        }
+    }
+    
+    /* H * P * H^T */
+    double HPHT[4][4] = {0};
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            for (int k = 0; k < 5; k++) {
+                HPHT[i][j] += HP[i][k] * H[j][k];
+            }
+        }
+    }
+    
+    /* S = H * P * H^T + R */
+    double S[4][4];
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            S[i][j] = HPHT[i][j] + R[i][j];
+        }
+    }
+    
+    /* S^-1 (使用4x4矩阵逆) */
+    double S_inv[4][4];
+    if (matrix_inverse_4x4((double (*)[4])S, (double (*)[4])S_inv) != 0) {
+        /* 如果4x4矩阵求逆失败，退回到基础算法 */
+        kalman_filter_update_basic(kf, sensor_data);
+        return;
+    }
+    
+    /* P * H^T */
+    double PHT[5][4] = {0};
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 4; j++) {
+            for (int k = 0; k < 5; k++) {
+                PHT[i][j] += kf->state.P[i][k] * H[j][k];
+            }
+        }
+    }
+    
+    /* K = P * H^T * S^-1 */
+    double K[5][4] = {0};
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 4; j++) {
+            for (int k = 0; k < 4; k++) {
+                K[i][j] += PHT[i][k] * S_inv[k][j];
+            }
+        }
+    }
+    
+    /* 状态更新：x = x + K * y */
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 4; j++) {
+            kf->state.x_hat[i] += K[i][j] * y[j];
+        }
+    }
+    
+    /* 正规化角度 */
+    kf->state.x_hat[2] = normalize_angle(kf->state.x_hat[2]);
+    kf->state.x_hat[4] = normalize_angle(kf->state.x_hat[4]);
+    
+    /* 协方差更新：P = (I - K * H) * P */
+    double I_KH[5][5];
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 5; j++) {
+            double KH = 0;
+            for (int k = 0; k < 4; k++) {
                 KH += K[i][k] * H[k][j];
             }
             I_KH[i][j] = (i == j ? 1.0 : 0.0) - KH;

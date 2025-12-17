@@ -28,6 +28,28 @@
 #define WHEEL_SLIP_ACCEL_THRESHOLD 0.3  /* 轮滑动加速度阈值 (m/s²) */
 #define STEERING_ANGLE_MAX 0.628  /* 最大转向角 (36°，约0.628 rad) */
 
+/* ========== 融合算法配置 ========== */
+
+/**
+ * @brief 融合算法模式枚举
+ * 支持不同的多传感器融合策略
+ */
+typedef enum {
+    FUSION_MODE_BASIC = 0,          /**< 基础算法：车轮转角+轮速+IMU加速度(3维观测) */
+    FUSION_MODE_IMU_STEERING = 1    /**< 增强算法：融合IMU推导转向角(4维观测) */
+} FusionMode_t;
+
+/**
+ * @brief 融合算法配置结构体
+ * 用于选择和配置不同的融合策略
+ */
+typedef struct {
+    FusionMode_t mode;                      /**< 当前融合模式 */
+    float imu_steering_vel_threshold;       /**< IMU转向推导速度下限 (m/s)，低于此值禁用 */
+    float imu_steering_weight;              /**< IMU转向融合权重 [0,1] */
+    bool enable_adaptive_weighting;         /**< 是否启用自适应权重调整 */
+} FusionConfig_t;
+
 /* ========== 数据结构定义 ========== */
 
 /**
@@ -125,6 +147,7 @@ typedef struct {
     float r_wheel;    /**< 轮速计测量噪声 */
     float r_imu;      /**< IMU加速度测量噪声 */
     float r_steering; /**< 转向角测量噪声 */
+    float r_imu_steering;   /**< IMU推导转向角测量噪声(融合模式使用) */
 } NoiseParameters_t;
 
 /**
@@ -139,6 +162,8 @@ typedef struct {
     float imu_gyro_bias_z;           /**< IMU z轴陀螺仪零偏 */
     float imu_accel_scale_x;         /**< IMU x轴加速度尺度因子 */
     float imu_accel_scale_y;         /**< IMU y轴加速度尺度因子 */
+    float imu_lateral_accel_bias;    /**< IMU横向加速度零偏(融合模式使用) */
+    float imu_lateral_accel_scale;   /**< IMU横向加速度尺度因子(融合模式使用) */
 } CalibrationParams_t;
 
 /**
