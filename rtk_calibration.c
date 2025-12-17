@@ -174,10 +174,14 @@ int rtk_calibration_compute(RTKCalibrationManager_t *manager,
     calibration->wheel_calibration_factor = 
         clamp(calibration->wheel_calibration_factor, 0.8, 1.2);
     
-    /* 估计转向角校准参数 */
-    estimate_steering_calibration(manager,
-                                 &calibration->steering_angle_offset,
-                                 &calibration->steering_angle_gain);
+    /* 估计转向角校准参数（使用临时 double 变量以支持混合精度）*/
+    double steering_offset_d = (double)calibration->steering_angle_offset;
+    double steering_gain_d = (double)calibration->steering_angle_gain;
+    
+    estimate_steering_calibration(manager, &steering_offset_d, &steering_gain_d);
+    
+    calibration->steering_angle_offset = (float)steering_offset_d;
+    calibration->steering_angle_gain = (float)steering_gain_d;
     
     /* 其他参数保持默认值 */
     calibration->imu_accel_bias_x = 0.0;

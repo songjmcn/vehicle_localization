@@ -1,10 +1,16 @@
 /**
  * @file kalman_filter.c
  * @brief 扩展卡尔曼滤波器实现
+ * 
+ * 本文件实现方案 B（混合精度）的卡尔曼滤波器：
+ * - 所有矩阵操作使用内部 double 精度版本
+ * - Float API 通过适配层自动转换
  */
 
 #include "kalman_filter.h"
 #include "motion_model.h"
+#include "localization_adapter.h"
+#include "localization_types_internal.h"
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
@@ -161,12 +167,21 @@ int kalman_filter_init(KalmanFilter_t *kf,
         return -1;
     }
     
-    /* 初始化状态 */
-    kf->state.x_hat[0] = initial_state->x;
-    kf->state.x_hat[1] = initial_state->y;
-    kf->state.x_hat[2] = initial_state->theta;
-    kf->state.x_hat[3] = initial_state->v;
-    kf->state.x_hat[4] = initial_state->delta;
+    /* 将 float 外部 API 转换为内部 double 精度 */
+    VehicleState_internal_t state_internal;
+    NoiseParameters_internal_t noise_internal;
+    CalibrationParams_internal_t calib_internal;
+    
+    vehicle_state_float_to_internal(initial_state, &state_internal);
+    noise_parameters_float_to_internal(noise, &noise_internal);
+    calibration_params_float_to_internal(calibration, &calib_internal);
+    
+    /* 初始化状态 (Double 精度存储) */
+    kf->state.x_hat[0] = state_internal.x;
+    kf->state.x_hat[1] = state_internal.y;
+    kf->state.x_hat[2] = state_internal.theta;
+    kf->state.x_hat[3] = state_internal.v;
+    kf->state.x_hat[4] = state_internal.delta;
     
     /* 初始化协方差矩阵 */
     memset(kf->state.P, 0, sizeof(kf->state.P));
@@ -174,9 +189,9 @@ int kalman_filter_init(KalmanFilter_t *kf,
         kf->state.P[i][i] = 0.1;
     }
     
-    /* 保存噪声参数和校准参数 */
-    kf->noise = *noise;
-    kf->calibration = *calibration;
+    /* 保存噪声参数和校准参数 (转换为 double) */
+    kf->noise = *noise;  /* 复制 float 版本 */
+    kf->calibration = *calibration;  /* 复制 float 版本 */
     
     /* 初始化时间戳 */
     kf->state.previous_timestamp = 0;
@@ -428,11 +443,13 @@ void kalman_filter_get_state(const KalmanFilter_t *kf,
         return;
     }
     
-    state->x = kf->state.x_hat[0];
-    state->y = kf->state.x_hat[1];
-    state->theta = kf->state.x_hat[2];
-    state->v = kf->state.x_hat[3];
-    state->delta = kf->state.x_hat[4];
+    /* 将内部 double 精度状态转换为外部 float 版本 */
+    state->x = (float)kf->state.x_hat[0];
+    state->y = (float)kf->state.x_hat[1];
+    state->theta = (float)kf->state.x_hat[2];
+    state->v = (float)kf->state.x_hat[3];
+    state->delta = (float)kf->state.x_hat[4];
+    state->timestamp = kf->state.previous_timestamp;
 }
 
 DiagnosticsInfo_t kalman_filter_get_diagnostics(const KalmanFilter_t *kf) {
@@ -449,11 +466,15 @@ void kalman_filter_reset(KalmanFilter_t *kf,
         return;
     }
     
-    kf->state.x_hat[0] = initial_state->x;
-    kf->state.x_hat[1] = initial_state->y;
-    kf->state.x_hat[2] = initial_state->theta;
-    kf->state.x_hat[3] = initial_state->v;
-    kf->state.x_hat[4] = initial_state->delta;
+    /* 将 float 外部 API 转换为内部 double 精度 */
+    VehicleState_internal_t state_internal;
+    vehicle_state_float_to_internal(initial_state, &state_internal);
+    
+    kf->state.x_hat[0] = state_internal.x;
+    kf->state.x_hat[1] = state_internal.y;
+    kf->state.x_hat[2] = state_internal.theta;
+    kf->state.x_hat[3] = state_internal.v;
+    kf->state.x_hat[4] = state_internal.delta;
     
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 5; j++) {

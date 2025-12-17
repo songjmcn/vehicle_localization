@@ -31,27 +31,27 @@
 /* ========== 数据结构定义 ========== */
 
 /**
- * @brief 车辆状态结构体
+ * @brief 车辆状态结构体 (外部 API 使用 float 版本)
  */
 typedef struct {
-    double x;      /**< x位置 (m) */
-    double y;      /**< y位置 (m) */
-    double theta;  /**< 航向角 (rad) */
-    double v;      /**< 速度 (m/s) */
-    double delta;  /**< 转向角 (rad) */
+    float x;      /**< x位置 (m) */
+    float y;      /**< y位置 (m) */
+    float theta;  /**< 航向角 (rad) */
+    float v;      /**< 速度 (m/s) */
+    float delta;  /**< 转向角 (rad) */
     uint32_t timestamp;  /**< 时间戳 (ms) */
 } VehicleState_t;
 
 /**
- * @brief IMU数据结构体
+ * @brief IMU数据结构体 (外部 API 使用 float 版本)
  */
 typedef struct {
-    double accel_x;   /**< x轴加速度 (m/s²) */
-    double accel_y;   /**< y轴加速度 (m/s²) */
-    double accel_z;   /**< z轴加速度 (m/s²) */
-    double gyro_x;    /**< x轴角速度 (rad/s) */
-    double gyro_y;    /**< y轴角速度 (rad/s) */
-    double gyro_z;    /**< z轴角速度 (rad/s) */
+    float accel_x;   /**< x轴加速度 (m/s²) */
+    float accel_y;   /**< y轴加速度 (m/s²) */
+    float accel_z;   /**< z轴加速度 (m/s²) */
+    float gyro_x;    /**< x轴角速度 (rad/s) */
+    float gyro_y;    /**< y轴角速度 (rad/s) */
+    float gyro_z;    /**< z轴角速度 (rad/s) */
     uint32_t timestamp;  /**< 时间戳 (ms) */
 } IMUData_t;
 
@@ -74,31 +74,31 @@ typedef struct {
 } WheelPulseData_t;
 
 /**
- * @brief 轮速计数据结构体
+ * @brief 轮速计数据结构体 (外部 API 使用 float 版本)
  */
 typedef struct {
-    double velocity;   /**< 速度 (m/s) */
-    double distance;   /**< 积分距离 (m) */
+    float velocity;   /**< 速度 (m/s) */
+    float distance;   /**< 积分距离 (m) */
     uint32_t timestamp;  /**< 时间戳 (ms) */
 } WheelOdometryData_t;
 
 /**
- * @brief 转向角数据结构体
+ * @brief 转向角数据结构体 (外部 API 使用 float 版本)
  */
 typedef struct {
-    double steering_angle;  /**< 转向角 (rad) */
-    double steering_rate;   /**< 转向角速率 (rad/s) */
+    float steering_angle;  /**< 转向角 (rad) */
+    float steering_rate;   /**< 转向角速率 (rad/s) */
     uint32_t timestamp;  /**< 时间戳 (ms) */
 } SteeringData_t;
 
 /**
- * @brief RTK定位数据结构体（标定用）
+ * @brief RTK定位数据结构体（标定用 - 外部 API 使用 float 版本）
  */
 typedef struct {
-    double x;      /**< RTK x位置 (m) */
-    double y;      /**< RTK y位置 (m) */
-    double z;      /**< 高度 (m) */
-    double heading;  /**< RTK航向角 (rad) */
+    float x;      /**< RTK x位置 (m) */
+    float y;      /**< RTK y位置 (m) */
+    float z;      /**< 高度 (m) */
+    float heading;  /**< RTK航向角 (rad) */
     uint32_t timestamp;  /**< 时间戳 (ms) */
     uint8_t quality;  /**< 定位质量 (0-5, 5最优) */
 } RTKData_t;
@@ -114,31 +114,31 @@ typedef struct {
 } SensorReadings_t;
 
 /**
- * @brief 噪声参数结构体
+ * @brief 噪声参数结构体 (外部 API 使用 float 版本)
  */
 typedef struct {
-    double q_x;        /**< 位置x噪声 */
-    double q_y;        /**< 位置y噪声 */
-    double q_theta;    /**< 角度噪声 */
-    double q_v;        /**< 速度噪声 */
-    double q_delta;    /**< 转向角噪声 */
-    double r_wheel;    /**< 轮速计测量噪声 */
-    double r_imu;      /**< IMU加速度测量噪声 */
-    double r_steering; /**< 转向角测量噪声 */
+    float q_x;        /**< 位置x噪声 */
+    float q_y;        /**< 位置y噪声 */
+    float q_theta;    /**< 角度噪声 */
+    float q_v;        /**< 速度噪声 */
+    float q_delta;    /**< 转向角噪声 */
+    float r_wheel;    /**< 轮速计测量噪声 */
+    float r_imu;      /**< IMU加速度测量噪声 */
+    float r_steering; /**< 转向角测量噪声 */
 } NoiseParameters_t;
 
 /**
- * @brief 传感器校准参数结构体
+ * @brief 传感器校准参数结构体 (外部 API 使用 float 版本)
  */
 typedef struct {
-    double wheel_calibration_factor;  /**< 轮速计校准因子 */
-    double steering_angle_offset;     /**< 转向角零偏 (rad) */
-    double steering_angle_gain;       /**< 转向角增益 */
-    double imu_accel_bias_x;          /**< IMU x轴加速度零偏 */
-    double imu_accel_bias_y;          /**< IMU y轴加速度零偏 */
-    double imu_gyro_bias_z;           /**< IMU z轴陀螺仪零偏 */
-    double imu_accel_scale_x;         /**< IMU x轴加速度尺度因子 */
-    double imu_accel_scale_y;         /**< IMU y轴加速度尺度因子 */
+    float wheel_calibration_factor;  /**< 轮速计校准因子 */
+    float steering_angle_offset;     /**< 转向角零偏 (rad) */
+    float steering_angle_gain;       /**< 转向角增益 */
+    float imu_accel_bias_x;          /**< IMU x轴加速度零偏 */
+    float imu_accel_bias_y;          /**< IMU y轴加速度零偏 */
+    float imu_gyro_bias_z;           /**< IMU z轴陀螺仪零偏 */
+    float imu_accel_scale_x;         /**< IMU x轴加速度尺度因子 */
+    float imu_accel_scale_y;         /**< IMU y轴加速度尺度因子 */
 } CalibrationParams_t;
 
 /**

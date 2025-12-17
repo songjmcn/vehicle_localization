@@ -1,9 +1,15 @@
 /**
  * @file motion_model.c
  * @brief 运动模型实现
+ * 
+ * 本文件实现方案 B（混合精度）的运动模型：
+ * - 公共 API 使用 float 版本
+ * - 内部计算使用 double 精度
  */
 
 #include "motion_model.h"
+#include "localization_adapter.h"
+#include "localization_types_internal.h"
 #include <math.h>
 #include <string.h>
 

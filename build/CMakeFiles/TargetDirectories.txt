@@ -1,8 +1,0 @@
-/Users/alex/workspace/code_review/vehicle_localization/build/CMakeFiles/localization_lib.dir
-/Users/alex/workspace/code_review/vehicle_localization/build/CMakeFiles/localization_example.dir
-/Users/alex/workspace/code_review/vehicle_localization/build/CMakeFiles/edit_cache.dir
-/Users/alex/workspace/code_review/vehicle_localization/build/CMakeFiles/rebuild_cache.dir
-/Users/alex/workspace/code_review/vehicle_localization/build/CMakeFiles/list_install_components.dir
-/Users/alex/workspace/code_review/vehicle_localization/build/CMakeFiles/install.dir
-/Users/alex/workspace/code_review/vehicle_localization/build/CMakeFiles/install/local.dir
-/Users/alex/workspace/code_review/vehicle_localization/build/CMakeFiles/install/strip.dir
