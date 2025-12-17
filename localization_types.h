@@ -20,7 +20,7 @@
 #define MAX_HISTORY_SIZE 100
 
 /* 速度阈值 */
-#define V_STATIC_THRESHOLD 0.05  /* 静止速度阈值 (m/s) */
+#define V_STATIC_THRESHOLD 0.1  /* 静止速度阈值 (m/s), 优化为float精度推荐值 */
 #define V_LOW_SPEED_THRESHOLD 1.5  /* 低速阈值 (m/s) */
 #define V_PARKING_MAX 2.0  /* 自动泊车最大速度 (m/s) */
 

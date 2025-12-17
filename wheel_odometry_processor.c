@@ -122,7 +122,7 @@ int wheel_odometry_processor_update(WheelOdometryProcessor_t *processor,
     double velocity = distance_delta / dt_sec;
     
     /* 极低速补零 */
-    if (fabs(velocity) < 0.05) {
+    if (fabs(velocity) < V_STATIC_THRESHOLD) {
         velocity = 0.0;
     }
     
@@ -182,7 +182,7 @@ int wheel_odometry_processor_set_velocity(WheelOdometryProcessor_t *processor,
     processor->last_update_time = timestamp;
     
     /* 极低速补零 */
-    if (fabs(velocity) < 0.05) {
+    if (fabs(velocity) < V_STATIC_THRESHOLD) {
         velocity = 0.0;
     }
     

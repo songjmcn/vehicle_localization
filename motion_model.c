@@ -111,3 +111,48 @@ void motion_model_jacobian(const VehicleState_t *state,
         F[2][4] = sign_v * abs_v / (WHEELBASE * cos_delta * cos_delta) * dt;
     }
 }
+
+/* ========== Float API Implementation (for TC397 MCU compatibility) ========== */
+
+/**
+ * @brief 使用单轨模型预测车辆状态 (Float版本)
+ * 
+ * 内部将float参数转换为double后调用原有的double版本函数
+ */
+VehicleState_t motion_model_predict_float(const VehicleState_t *state,
+                                          float velocity,
+                                          float steering_angle,
+                                          float dt) {
+    if (!state) {
+        VehicleState_t empty = {0};
+        return empty;
+    }
+    
+    /* 转换float为double并调用原有函数 */
+    return motion_model_predict(state,
+                               (double)velocity,
+                               (double)steering_angle,
+                               (double)dt);
+}
+
+/**
+ * @brief 计算运动学模型的状态转移雅可比矩阵 (Float版本)
+ * 
+ * 内部将float参数转换为double后调用原有的double版本函数
+ */
+void motion_model_jacobian_float(const VehicleState_t *state,
+                                 float velocity,
+                                 float steering_angle,
+                                 float dt,
+                                 double F[5][5]) {
+    if (!state || !F) {
+        return;
+    }
+    
+    /* 转换float为double并调用原有函数 */
+    motion_model_jacobian(state,
+                         (double)velocity,
+                         (double)steering_angle,
+                         (double)dt,
+                         F);
+}

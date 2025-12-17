@@ -133,4 +133,34 @@ int steering_jitter_filter_set_params(SteeringJitterFilter_t *filter,
  */
 void steering_jitter_filter_reset(SteeringJitterFilter_t *filter);
 
+/* ========== Float API (for TC397 MCU compatibility) ========== */
+
+/**
+ * @brief 预测步骤 (Float版本)
+ * @param kf 滤波器指针
+ * @param velocity 速度 (m/s) - float
+ * @param steering_angle 转向角 (rad) - float
+ * @param timestamp 时间戳 (ms)
+ */
+void kalman_filter_predict_float(KalmanFilter_t *kf,
+                                 float velocity,
+                                 float steering_angle,
+                                 uint32_t timestamp);
+
+/**
+ * @brief 更新步骤 (Float版本)
+ * @param kf 滤波器指针
+ * @param sensor_data 传感器数据
+ */
+void kalman_filter_update_float(KalmanFilter_t *kf,
+                                const SensorReadings_t *sensor_data);
+
+/**
+ * @brief 获取当前状态估计 (Float版本)
+ * @param kf 滤波器指针
+ * @param state 输出状态指针 (内部保持double精度)
+ */
+void kalman_filter_get_state_float(const KalmanFilter_t *kf,
+                                   VehicleState_t *state);
+
 #endif /* KALMAN_FILTER_H */

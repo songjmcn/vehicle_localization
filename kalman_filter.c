@@ -632,3 +632,57 @@ void steering_jitter_filter_reset(SteeringJitterFilter_t *filter) {
     filter->is_high_jitter = false;
     /* 保留零偏角和参数 */
 }
+
+/* ========== Float API Implementation (for TC397 MCU compatibility) ========== */
+
+/**
+ * @brief 预测步骤 (Float版本)
+ * 
+ * 内部将float参数转换为double后调用原有的double版本函数
+ */
+void kalman_filter_predict_float(KalmanFilter_t *kf,
+                                 float velocity,
+                                 float steering_angle,
+                                 uint32_t timestamp) {
+    if (!kf) {
+        return;
+    }
+    
+    /* 转换float为double并调用原有函数 */
+    kalman_filter_predict(kf,
+                         (double)velocity,
+                         (double)steering_angle,
+                         timestamp);
+}
+
+/**
+ * @brief 更新步骤 (Float版本)
+ * 
+ * 直接转发到原有的double版本函数
+ * (SensorReadings_t中的数据已是double精度)
+ */
+void kalman_filter_update_float(KalmanFilter_t *kf,
+                                const SensorReadings_t *sensor_data) {
+    if (!kf || !sensor_data) {
+        return;
+    }
+    
+    /* 直接调用double版本 */
+    kalman_filter_update(kf, sensor_data);
+}
+
+/**
+ * @brief 获取当前状态估计 (Float版本)
+ * 
+ * 直接转发到原有的double版本函数
+ * 返回的VehicleState_t保持double精度
+ */
+void kalman_filter_get_state_float(const KalmanFilter_t *kf,
+                                   VehicleState_t *state) {
+    if (!kf || !state) {
+        return;
+    }
+    
+    /* 直接调用double版本 */
+    kalman_filter_get_state(kf, state);
+}
