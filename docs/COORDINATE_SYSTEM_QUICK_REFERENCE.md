@@ -2,9 +2,14 @@
  * @file COORDINATE_SYSTEM_QUICK_REFERENCE.md
  * @brief 坐标系快速参考卡 - 开发人员速查手册
  * @date 2025-12-17
+ * @standard ISO 8855 (Vehicle dynamics and control performance testing)
+ * @note 本系统车体坐标系完全符合 ISO 8855 标准
  */
 
 # 坐标系快速参考卡
+
+🔗 **标准符合性：** ✅ ISO 8855  
+📖 **详细标准说明：** [ISO 8855 坐标系规范](ISO8855_COORDINATE_SYSTEM.md)
 
 ## 🎯 核心要点（必读）
 
