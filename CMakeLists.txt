@@ -40,9 +40,15 @@ add_library(localization_lib ${SOURCES})
 # 链接数学库
 target_link_libraries(localization_lib PRIVATE m)
 
-# 可执行文件
+# 可执行文件 - 定位系统示例
 add_executable(localization_example example_usage.c)
 target_link_libraries(localization_example PRIVATE localization_lib m)
+
+# 可执行文件 - 标定CSV数据生成工具
+add_executable(generate_calibration_csv generate_calibration_csv.c)
+
+# 可执行文件 - 离线标定工具（超简化版，无依赖）
+add_executable(offline_calibration offline_calibration.c)
 
 # 安装目标
 install(TARGETS localization_example
