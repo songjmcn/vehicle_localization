@@ -22,7 +22,6 @@ vehicle_localization/
 │  ├─ 快速开始
 │  │  ├── COORDINATE_ORIGIN_QUICK_VIEW.md      # 坐标原点 (3秒速查)
 │  │  ├── ISO8855_EXECUTIVE_SUMMARY.md         # ISO 8855 执行摘要
-│  │  ├── SCHEME_B_IMPLEMENTATION_REPORT.py    # 方案B实现报告
 │  │  └── CSV_CALIBRATION_QUICKSTART.md        # CSV标定快速开始
 │  │
 │  ├─ 协调系统文档
@@ -55,13 +54,23 @@ vehicle_localization/
 │  │  ├── CMAKE_STRUCTURE.md                   # CMake结构
 │  │  └── CMAKE_vs_MAKEFILE.md                 # CMake vs Makefile
 │  │
-│  ├─ 其他文档
-│  │  ├── FILE_MANIFEST.md                     # 文件清单
-│  │  ├── PROJECT_COMPLETION_SUMMARY.md        # 项目完成总结
-│  │  └── INTEGRATION_GUIDE.md                 # 集成指南
-│  │
+│  └─ 其他文档
+│     ├── FILE_MANIFEST.md                     # 文件清单
+│     ├── PROJECT_COMPLETION_SUMMARY.md        # 项目完成总结
+│     └── INTEGRATION_GUIDE.md                 # 集成指南
+│
+├─ 📜 脚本工具 (scripts/)
+│  ├── cmake_build.sh                   # CMake构建脚本
+│  ├── build_and_run.sh                 # 编译运行脚本
+│  ├── analyze_binary.sh                # 二进制分析工具
+│  ├── function_size_analysis.sh        # 函数大小分析
+│  ├── verify_completion.sh             # 完成度验证脚本
+│  ├── localization_system.py           # Python参考实现
+│  ├── SCHEME_B_IMPLEMENTATION_REPORT.py # 方案B报告
+│  └── detailed_size_report.py          # 详细大小报告
+│
 ├─ 🐍 Python参考实现（原型开发）
-│  └── localization_system.py          # Python EKF实现
+│  └── scripts/localization_system.py   # Python EKF实现
 │
 ├─ 🔧 C生产实现（嵌入式部署）
 │  ├── localization_types.h            # 数据类型定义
@@ -87,25 +96,25 @@ vehicle_localization/
 
 ```bash
 # 检查Python实现
-cat localization_system.py
+cat scripts/localization_system.py
 
 # 查看理论指南
-cat low_speed_localization_guide.md
+cat docs/low_speed_localization_guide.md
 ```
 
 ### 方案B：C生产级部署（CMake - 推荐）⭐
 
 ```bash
 # 一行命令快速开始
-./cmake_build.sh build && ./cmake_build.sh run
+./scripts/cmake_build.sh build && ./scripts/cmake_build.sh run
 
 # 或分步骤操作
-./cmake_build.sh build         # 编译（Release）
-./cmake_build.sh build-debug   # Debug编译（带调试符号）
-./cmake_build.sh run           # 运行程序
-./cmake_build.sh clean         # 清除编译产物
-./cmake_build.sh rebuild       # 清除后重新编译
-./cmake_build.sh help          # 查看所有命令
+./scripts/cmake_build.sh build         # 编译（Release）
+./scripts/cmake_build.sh build-debug   # Debug编译（带调试符号）
+./scripts/cmake_build.sh run           # 运行程序
+./scripts/cmake_build.sh clean         # 清除编译产物
+./scripts/cmake_build.sh rebuild       # 清除后重新编译
+./scripts/cmake_build.sh help          # 查看所有命令
 ```
 
 **CMake优势**：
@@ -232,7 +241,7 @@ int main() {
 ### Python算法验证
 
 ```python
-from localization_system import LowSpeedLocalizationSystem, SensorReading
+from scripts.localization_system import LowSpeedLocalizationSystem, SensorReading
 
 # 初始化
 system = LowSpeedLocalizationSystem()
@@ -498,10 +507,10 @@ make test_rtk     # 编译RTK模块测试
 
 | 需求 | 推荐阅读 |
 |-----|--------|
-| 了解理论 | [low_speed_localization_guide.md](low_speed_localization_guide.md) |
-| Python原型 | [localization_system.py](localization_system.py) |
-| C集成开发 | [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) |
-| 代码详解 | [C_IMPLEMENTATION_GUIDE.md](C_IMPLEMENTATION_GUIDE.md) |
+| 了解理论 | [docs/low_speed_localization_guide.md](docs/low_speed_localization_guide.md) |
+| Python原型 | [scripts/localization_system.py](scripts/localization_system.py) |
+| C集成开发 | [docs/INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) |
+| 代码详解 | [docs/C_IMPLEMENTATION_GUIDE.md](docs/C_IMPLEMENTATION_GUIDE.md) |
 | 快速示例 | [example_usage.c](example_usage.c) |
 
 ---
