@@ -69,15 +69,29 @@ vehicle_localization/
 │  ├── SCHEME_B_IMPLEMENTATION_REPORT.py # 方案B报告
 │  └── detailed_size_report.py          # 详细大小报告
 │
-├─ 🐍 Python参考实现（原型开发）
-│  └── scripts/localization_system.py   # Python EKF实现
+├─ 🧮 定位算法核心 (src/)
+│  ├── localization_types.h             # 数据类型定义
+│  ├── localization_types_internal.h    # 内部类型定义
+│  ├── localization_adapter.h           # API适配层
+│  ├── localization_system.h/c          # 高层系统接口
+│  ├── localization_system_private.h    # 私有头文件
+│  ├── motion_model.h/c                 # 运动学模型 (单轨模型)
+│  └── kalman_filter.h/c                # 扩展卡尔曼滤波 (EKF)
 │
-├─ 🔧 C生产实现（嵌入式部署）
-│  ├── localization_types.h            # 数据类型定义
-│  ├── motion_model.h/c                # 运动学模型
-│  ├── kalman_filter.h/c               # 扩展卡尔曼滤波
-│  ├── rtk_calibration.h/c             # RTK标定模块
-│  ├── localization_system.h/c         # 高层系统接口
+├─ 🛠️  RTK标定工具 (tools/)
+│  ├── rtk_calibration.h/c              # RTK标定模块
+│  ├── wheel_odometry_processor.h/c     # 轮脉冲处理
+│  ├── offline_calibration.c            # 离线参数计算工具
+│  └── generate_calibration_csv.c       # CSV数据生成工具
+│
+├─ 📄 示例程序
+│  └── example_usage.c                  # 完整使用示例
+│
+└─ 🔧 构建配置
+   ├── CMakeLists.txt                   # CMake配置
+   ├── Makefile                         # Make配置
+   └── README.md                        # 本文件
+```
 │  ├── wheel_odometry_processor.h/c    # 轮脉冲处理
 │  ├── example_usage.c                 # 使用示例程序
 │  └── Makefile                        # 编译配置

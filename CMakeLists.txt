@@ -24,15 +24,16 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # 源文件列表
 set(SOURCES
-    motion_model.c
-    kalman_filter.c
-    rtk_calibration.c
-    localization_system.c
-    wheel_odometry_processor.c
+    src/motion_model.c
+    src/kalman_filter.c
+    tools/rtk_calibration.c
+    src/localization_system.c
+    tools/wheel_odometry_processor.c
 )
 
 # 头文件目录
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/tools)
 
 # 创建库目标
 add_library(localization_lib ${SOURCES})
@@ -45,10 +46,10 @@ add_executable(localization_example example_usage.c)
 target_link_libraries(localization_example PRIVATE localization_lib m)
 
 # 可执行文件 - 标定CSV数据生成工具
-add_executable(generate_calibration_csv generate_calibration_csv.c)
+add_executable(generate_calibration_csv tools/generate_calibration_csv.c)
 
 # 可执行文件 - 离线标定工具（超简化版，无依赖）
-add_executable(offline_calibration offline_calibration.c)
+add_executable(offline_calibration tools/offline_calibration.c)
 
 # 安装目标
 install(TARGETS localization_example
@@ -61,13 +62,13 @@ install(TARGETS localization_lib
 )
 
 install(FILES
-    localization_types.h
-    motion_model.h
-    kalman_filter.h
-    rtk_calibration.h
-    localization_system.h
-    localization_system_private.h
-    wheel_odometry_processor.h
+    src/localization_types.h
+    src/motion_model.h
+    src/kalman_filter.h
+    tools/rtk_calibration.h
+    src/localization_system.h
+    src/localization_system_private.h
+    tools/wheel_odometry_processor.h
     DESTINATION include
 )
 
