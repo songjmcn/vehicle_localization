@@ -26,6 +26,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(SOURCES
     src/motion_model.c
     src/kalman_filter.c
+    src/steering_model.c
     tools/rtk_calibration.c
     src/localization_system.c
     tools/wheel_odometry_processor.c

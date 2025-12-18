@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) {
     }
     
     /* 写入CSV头 */
-    fprintf(file, "timestamp,odo_x,odo_y,odo_theta,odo_v,odo_delta,"
+    fprintf(file, "timestamp,odo_x,odo_y,odo_theta,odo_v,odo_delta,odo_gear,"
                   "rtk_x,rtk_y,rtk_heading,rtk_quality\n");
     
     /* 参数 */
@@ -57,21 +57,25 @@ int main(int argc, char *argv[]) {
         
         double v_cmd = 0.0;      /* 命令速度 */
         double steering_cmd = 0.0; /* 命令转向角 */
+        int gear = 0;            /* 档位：0=P, 1=R, 3=D */
         
         /* 阶段1：直行100米 (0-2000步，100秒) */
         if (step < 2000) {
             v_cmd = 1.0;
             steering_cmd = 0.0;
+            gear = 3;  /* D档 */
         }
-        /* 阶段2：转向并后退 (2000-2600步) */
+        /* 阶段2：后退30米 (2000-2600步) */
         else if (step < 2600) {
-            v_cmd = 0.5;
+            v_cmd = -0.5;  /* 负速度表示后退 */
             steering_cmd = 0.5;  /* 左转 */
+            gear = 1;  /* R档 */
         }
         /* 阶段3：停止 */
         else {
             v_cmd = 0.0;
             steering_cmd = 0.0;
+            gear = 0;  /* P档 */
         }
         
         /* 里程计（带随机噪声） */
@@ -127,10 +131,10 @@ int main(int argc, char *argv[]) {
         }
         
         /* 写入CSV行 */
-        fprintf(file, "%u,%.6f,%.6f,%.6f,%.4f,%.6f,"
+        fprintf(file, "%u,%.6f,%.6f,%.6f,%.4f,%.6f,%d,"
                      "%.6f,%.6f,%.6f,%u\n",
                 timestamp,
-                x_odo, y_odo, theta_odo, v_odo, steering_odo,
+                x_odo, y_odo, theta_odo, v_odo, steering_odo, gear,
                 x_rtk, y_rtk, theta_rtk, rtk_quality);
     }
     

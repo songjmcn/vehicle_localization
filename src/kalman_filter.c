@@ -260,6 +260,9 @@ int kalman_filter_init(KalmanFilter_t *kf,
     /* 初始化时间戳 */
     kf->state.previous_timestamp = 0;
     
+    /* 初始化档位 - 从初始状态中获取 */
+    kf->state.previous_gear = initial_state->gear;
+    
     /* 初始化诊断信息 */
     memset(&kf->diagnostics, 0, sizeof(kf->diagnostics));
     
@@ -322,6 +325,8 @@ void kalman_filter_predict(KalmanFilter_t *kf,
     current_state.theta = kf->state.x_hat[2];
     current_state.v = kf->state.x_hat[3];
     current_state.delta = kf->state.x_hat[4];
+    current_state.gear = kf->state.previous_gear;  /* 新增：设置档位 */
+    current_state.timestamp = timestamp;
     
     /* 运动模型预测 */
     VehicleState_t predicted_state = motion_model_predict(&current_state,
@@ -335,6 +340,7 @@ void kalman_filter_predict(KalmanFilter_t *kf,
     kf->state.x_hat[2] = predicted_state.theta;
     kf->state.x_hat[3] = predicted_state.v;
     kf->state.x_hat[4] = predicted_state.delta;
+    kf->state.previous_gear = predicted_state.gear;  /* 新增：更新档位 */
     
     /* 计算雅可比矩阵 */
     double F[5][5];
@@ -1023,4 +1029,14 @@ void kalman_filter_get_state_float(const KalmanFilter_t *kf,
     
     /* 直接调用double版本 */
     kalman_filter_get_state(kf, state);
+}
+
+/**
+ * @brief 设置车辆当前档位
+ * 用于更新方向判断的档位信息
+ */
+void kalman_filter_set_gear(KalmanFilter_t *kf, VehicleGear_t gear) {
+    if (kf && gear != GEAR_INVALID) {
+        kf->state.previous_gear = gear;
+    }
 }

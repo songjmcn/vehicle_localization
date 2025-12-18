@@ -70,6 +70,9 @@ int localization_system_init(LocalizationSystem_t *sys,
     /* 初始化诊断信息 */
     memset(&sys->diagnostics, 0, sizeof(sys->diagnostics));
     
+    /* 初始化档位 */
+    sys->current_gear = GEAR_PARK;
+    
     /* 初始化轮速处理器 - 使用默认配置 */
     WheelConfig_t default_wheel_config = {
         .pulses_per_wheel_rev = 400,    /* 常见的400脉冲/圈 */
@@ -142,6 +145,11 @@ int localization_system_process(LocalizationSystem_t *sys,
     double filtered_steering = sys->kalman_filter.steering_filter.filtered_angle;
     if (fabs(filtered_steering) > STEERING_ANGLE_MAX) {
         filtered_steering = clamp(filtered_steering, -STEERING_ANGLE_MAX, STEERING_ANGLE_MAX);
+    }
+    
+    /* 设置档位信息到滤波器 */
+    if (sys->current_gear != GEAR_INVALID) {
+        kalman_filter_set_gear(&sys->kalman_filter, sys->current_gear);
     }
     
     /* 预测步骤 */
@@ -378,4 +386,21 @@ int localization_system_reset_wheel_processor(LocalizationSystem_t *sys) {
     }
     
     return wheel_odometry_processor_reset(&sys->wheel_processor);
+}
+
+/**
+ * @brief 更新系统的当前档位
+ */
+int localization_system_set_gear(LocalizationSystem_t *sys, VehicleGear_t gear) {
+    if (!sys || !sys->is_initialized) {
+        return -1;
+    }
+    
+    if (gear != GEAR_INVALID) {
+        sys->current_gear = gear;
+        kalman_filter_set_gear(&sys->kalman_filter, gear);
+        return 0;
+    }
+    
+    return -1;
 }

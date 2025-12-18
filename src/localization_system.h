@@ -25,6 +25,7 @@ typedef struct {
     /* 系统状态 */
     bool is_initialized;
     uint32_t operation_timestamp;
+    VehicleGear_t current_gear;                 /**< 当前档位 */
 } LocalizationSystem_t;
 
 /**
@@ -215,5 +216,13 @@ bool localization_system_wheel_is_timeout(const LocalizationSystem_t *sys);
  * @return 0成功，-1失败
  */
 int localization_system_reset_wheel_processor(LocalizationSystem_t *sys);
+
+/**
+ * @brief 更新系统的当前档位
+ * @param sys 系统指针
+ * @param gear 车辆档位
+ * @return 0成功，-1失败
+ */
+int localization_system_set_gear(LocalizationSystem_t *sys, VehicleGear_t gear);
 
 #endif /* LOCALIZATION_SYSTEM_H */

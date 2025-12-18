@@ -30,6 +30,8 @@ static inline void vehicle_state_float_to_internal(
     internal->v = (double)external->v;
     internal->delta = (double)external->delta;
     internal->timestamp = external->timestamp;
+    internal->gear = external->gear;
+    internal->direction = external->direction;
 }
 
 /**
@@ -47,6 +49,8 @@ static inline void vehicle_state_internal_to_float(
     external->v = (float)internal->v;
     external->delta = (float)internal->delta;
     external->timestamp = internal->timestamp;
+    external->gear = internal->gear;
+    external->direction = internal->direction;
 }
 
 /**

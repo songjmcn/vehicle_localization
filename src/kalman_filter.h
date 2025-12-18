@@ -195,4 +195,13 @@ void kalman_filter_update_float(KalmanFilter_t *kf,
 void kalman_filter_get_state_float(const KalmanFilter_t *kf,
                                    VehicleState_t *state);
 
+/**
+ * @brief 设置车辆当前档位
+ * 用于更新方向判断的档位信息
+ * 
+ * @param kf 滤波器指针
+ * @param gear 车辆档位
+ */
+void kalman_filter_set_gear(KalmanFilter_t *kf, VehicleGear_t gear);
+
 #endif /* KALMAN_FILTER_H */

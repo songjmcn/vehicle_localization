@@ -50,6 +50,31 @@ typedef struct {
     bool enable_adaptive_weighting;         /**< 是否启用自适应权重调整 */
 } FusionConfig_t;
 
+/* ========== 档位和方向枚举定义 ========== */
+
+/**
+ * @brief 车辆档位枚举
+ * 用于准确判断车辆运动方向
+ */
+typedef enum {
+    GEAR_PARK = 0,        /**< P档（停止） */
+    GEAR_REVERSE = 1,     /**< R档（后退） */
+    GEAR_NEUTRAL = 2,     /**< N档（空档） */
+    GEAR_DRIVE = 3,       /**< D档（前进） */
+    GEAR_LOW = 4,         /**< L档（低速档） */
+    GEAR_INVALID = -1     /**< 无效档位 */
+} VehicleGear_t;
+
+/**
+ * @brief 车辆运动方向枚举（派生值）
+ * 从档位和速度综合计算而来
+ */
+typedef enum {
+    DIRECTION_STATIONARY = 0,    /**< 静止（或速度近似为0） */
+    DIRECTION_FORWARD = 1,       /**< 前进方向 */
+    DIRECTION_REVERSE = -1       /**< 后退方向 */
+} VehicleDirection_t;
+
 /* ========== 数据结构定义 ========== */
 
 /**
@@ -62,6 +87,8 @@ typedef struct {
     float v;      /**< 速度 (m/s) */
     float delta;  /**< 转向角 (rad) */
     uint32_t timestamp;  /**< 时间戳 (ms) */
+    VehicleGear_t gear;  /**< 车辆档位 */
+    VehicleDirection_t direction;  /**< 推导的运动方向 */
 } VehicleState_t;
 
 /**
@@ -185,6 +212,7 @@ typedef struct {
     double x_hat[5];        /**< 状态估计 [x, y, theta, v, delta] */
     double P[5][5];         /**< 协方差矩阵 5x5 */
     uint32_t previous_timestamp;  /**< 上一时间戳 */
+    VehicleGear_t previous_gear;  /**< 上一时刻档位 */
 } FilterState_t;
 
 /**
@@ -233,6 +261,55 @@ static inline double normalize_angle(double angle) {
     while (angle > PI) angle -= 2 * PI;
     while (angle < -PI) angle += 2 * PI;
     return angle;
+}
+
+/**
+ * @brief 从档位和速度推导车辆运动方向
+ * 
+ * 优先级：档位 > 速度信号
+ * 
+ * @param gear 当前档位
+ * @param velocity 速度 (m/s)
+ * @return 推导的运动方向
+ */
+static inline VehicleDirection_t derive_direction(VehicleGear_t gear, double velocity) {
+    /* 档位优先判断 */
+    switch (gear) {
+        case GEAR_REVERSE:
+            return DIRECTION_REVERSE;  /* R档必为后退 */
+        case GEAR_DRIVE:
+        case GEAR_LOW:
+            return DIRECTION_FORWARD;  /* D/L档为前进 */
+        case GEAR_PARK:
+        case GEAR_NEUTRAL:
+        case GEAR_INVALID:
+        default:
+            /* 静止档位使用速度判断 */
+            if (fabs(velocity) < V_STATIC_THRESHOLD) {
+                return DIRECTION_STATIONARY;
+            }
+            /* 档位无效时，用速度信号作为备选 */
+            return (velocity > 0.0) ? DIRECTION_FORWARD : DIRECTION_REVERSE;
+    }
+}
+
+/**
+ * @brief 从速度推导档位（用于向后兼容）
+ * 
+ * 当外部系统无法提供档位信息时调用此函数
+ * 恢复原有的纯速度判断方式
+ * 
+ * @param velocity 速度 (m/s)
+ * @return 推导的档位
+ */
+static inline VehicleGear_t derive_gear_from_velocity(double velocity) {
+    if (fabs(velocity) < V_STATIC_THRESHOLD) {
+        return GEAR_PARK;
+    } else if (velocity > 0.0) {
+        return GEAR_DRIVE;
+    } else {
+        return GEAR_REVERSE;
+    }
 }
 
 /**

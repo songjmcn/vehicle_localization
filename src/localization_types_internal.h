@@ -17,6 +17,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "localization_types.h"  /* 包含公共枚举定义 */
 
 /* ========== 常数定义 ========== */
 
@@ -44,6 +45,8 @@ typedef struct {
     double v;      /**< 速度 (m/s) */
     double delta;  /**< 转向角 (rad) */
     uint32_t timestamp;  /**< 时间戳 (ms) */
+    VehicleGear_t gear;  /**< 车辆档位 */
+    VehicleDirection_t direction;  /**< 推导的运动方向 */
 } VehicleState_internal_t;
 
 /**
