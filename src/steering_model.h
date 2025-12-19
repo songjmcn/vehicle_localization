@@ -43,7 +43,22 @@ typedef struct {
     double prev_steering_angle;     /**< 前一时刻的转向角 (rad) */
     double steering_rate;           /**< 转向角速率 (rad/s) */
     uint32_t prev_timestamp;        /**< 前一时刻的时间戳 (ms) */
+    double left_wheel_angle;        /**< 前左轮转角 (rad) */
+    double right_wheel_angle;       /**< 前右轮转角 (rad) */
+    double mean_wheel_angle;        /**< 平均前轮转角 (rad) */
 } SteeringModelState_t;
+
+/**
+ * @brief 转向角映射表结构
+ * 用于存储方向盘转角到前左/右轮转角的非线性映射关系
+ */
+typedef struct {
+    double *steering_wheel;         /**< 方向盘转角采样点数组 (rad) */
+    double *left_wheel;             /**< 前左轮转角数组 (rad) */
+    double *right_wheel;            /**< 前右轮转角数组 (rad) */
+    int num_points;                 /**< 映射表采样点数 */
+    bool valid;                     /**< 映射表是否已加载 */
+} SteeringMappingTable_t;
 
 /**
  * @brief 初始化转向模型
@@ -145,5 +160,70 @@ const SteeringConfig_t* steering_model_get_config(void);
  * @return 0成功，-1失败
  */
 int steering_model_update_config(const SteeringConfig_t *config);
+
+/* ========== 映射表相关函数 ========== */
+
+/**
+ * @brief 初始化转向角映射表
+ * 
+ * @param sw_samples 方向盘转角采样点数组 (rad)
+ * @param left_samples 前左轮转角数组 (rad)
+ * @param right_samples 前右轮转角数组 (rad)
+ * @param num_points 数组元素个数
+ * @return 0成功，-1失败
+ */
+int steering_mapping_init(const double *sw_samples,
+                        const double *left_samples,
+                        const double *right_samples,
+                        int num_points);
+
+/**
+ * @brief 根据映射表查询前轮转角
+ * 
+ * @param steering_wheel_angle 方向盘转角 (rad)
+ * @param left_wheel_angle 输出：前左轮转角指针 (rad)
+ * @param right_wheel_angle 输出：前右轮转角指针 (rad)
+ * @return 0成功，-1失败
+ */
+int steering_query_mapping(double steering_wheel_angle,
+                         double *left_wheel_angle,
+                         double *right_wheel_angle);
+
+/**
+ * @brief 计算平均转向角
+ * 
+ * @param steering_wheel_angle 方向盘转角 (rad)
+ * @return 平均转向角 (rad)
+ */
+double steering_compute_mean_angle(double steering_wheel_angle);
+
+/**
+ * @brief 计算Ackermann模型的航向角速率
+ * 
+ * @param velocity 车辆纵向速度 (m/s)
+ * @param steering_wheel_angle 方向盘转角 (rad)
+ * @param wheelbase 轴距 (m)
+ * @return 航向角速率 (rad/s)
+ */
+double steering_calculate_yaw_rate_ackermann(double velocity,
+                                            double steering_wheel_angle,
+                                            double wheelbase);
+
+/**
+ * @brief 获取当前的前轮转角信息
+ * 
+ * @param left_wheel 输出：前左轮转角指针
+ * @param right_wheel 输出：前右轮转角指针
+ * @param mean_angle 输出：平均转向角指针
+ * @return 0成功，-1失败
+ */
+int steering_get_wheel_angles(double *left_wheel,
+                            double *right_wheel,
+                            double *mean_angle);
+
+/**
+ * @brief 清理映射表资源
+ */
+void steering_mapping_cleanup(void);
 
 #endif /* STEERING_MODEL_H */

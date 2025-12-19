@@ -49,8 +49,20 @@ target_link_libraries(localization_example PRIVATE localization_lib m)
 # 可执行文件 - 标定CSV数据生成工具
 add_executable(generate_calibration_csv tools/generate_calibration_csv.c)
 
+# 可执行文件 - 转向映射表生成工具
+add_executable(generate_steering_mapping tools/generate_steering_mapping.c)
+target_link_libraries(generate_steering_mapping PRIVATE m)
+
 # 可执行文件 - 离线标定工具（超简化版，无依赖）
 add_executable(offline_calibration tools/offline_calibration.c)
+
+# 可执行文件 - 转向角映射表测试
+add_executable(test_steering_mapping test_steering_mapping.c src/steering_model.c src/motion_model.c)
+target_link_libraries(test_steering_mapping PRIVATE m)
+
+# 可执行文件 - 转向角映射表集成示例
+add_executable(example_mapping_integration example_mapping_integration.c src/steering_model.c src/motion_model.c)
+target_link_libraries(example_mapping_integration PRIVATE m)
 
 # 安装目标
 install(TARGETS localization_example

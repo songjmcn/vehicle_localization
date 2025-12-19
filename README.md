@@ -295,12 +295,12 @@ print(f"航向: {state.theta:.2f} rad")
 ### 🏗️ 构建系统（新增CMake）
 
 **CMake 现代构建系统文档**：
-- [CMAKE_QUICK_REFERENCE.md](CMAKE_QUICK_REFERENCE.md) - 快速参考卡片（5分钟）
-- [CMAKE_STRUCTURE.md](CMAKE_STRUCTURE.md) - 工程结构说明（15分钟）
-- [CMAKE_BUILD_GUIDE.md](CMAKE_BUILD_GUIDE.md) - 详细使用指南（20分钟）✨
-- [CMAKE_vs_MAKEFILE.md](CMAKE_vs_MAKEFILE.md) - 工具对比分析（10分钟）
-- [CMAKE_CHECKLIST.md](CMAKE_CHECKLIST.md) - 完成检查清单（10分钟）
-- [CMAKE_OVERVIEW.md](CMAKE_OVERVIEW.md) - 总体概览（5分钟）
+- [docs/CMAKE_QUICK_REFERENCE.md](docs/CMAKE_QUICK_REFERENCE.md) - 快速参考卡片（5分钟）
+- [docs/CMAKE_STRUCTURE.md](docs/CMAKE_STRUCTURE.md) - 工程结构说明（15分钟）
+- [docs/CMAKE_BUILD_GUIDE.md](docs/CMAKE_BUILD_GUIDE.md) - 详细使用指南（20分钟）✨
+- [docs/CMAKE_vs_MAKEFILE.md](docs/CMAKE_vs_MAKEFILE.md) - 工具对比分析（10分钟）
+- [docs/CMAKE_CHECKLIST.md](docs/CMAKE_CHECKLIST.md) - 完成检查清单（10分钟）
+- [docs/CMAKE_OVERVIEW.md](docs/CMAKE_OVERVIEW.md) - 总体概览（5分钟）
 
 **推荐阅读顺序**：
 1. 新手 → CMAKE_QUICK_REFERENCE.md

@@ -26,7 +26,19 @@ static SteeringModelState_t g_steering_state = {
     .filtered_steering_angle = 0.0,
     .prev_steering_angle = 0.0,
     .steering_rate = 0.0,
-    .prev_timestamp = 0
+    .prev_timestamp = 0,
+    .left_wheel_angle = 0.0,
+    .right_wheel_angle = 0.0,
+    .mean_wheel_angle = 0.0
+};
+
+/* 全局映射表 */
+static SteeringMappingTable_t g_steering_mapping = {
+    .steering_wheel = NULL,
+    .left_wheel = NULL,
+    .right_wheel = NULL,
+    .num_points = 0,
+    .valid = false
 };
 
 /**
@@ -66,15 +78,26 @@ int steering_model_init(const SteeringConfig_t *config) {
  */
 double steering_wheel_to_front_wheel(double steering_wheel_angle) {
     /* 转换：前轮转角 = 方向盘转角 / 齿比 
-     * 可以根据需求自己增加映射表法来计算转向角
+     * 改进：如果映射表可用，使用映射表查询，否则使用线性模型
      */
-    double front_wheel_angle = steering_wheel_angle / g_steering_config.steering_ratio;
+    double left_wheel, right_wheel;
     
-    /* 应用零偏和增益补偿 */
-    front_wheel_angle = steering_model_apply_calibration(front_wheel_angle);
-    
-    /* 限制在有效范围内 */
-    return steering_model_clamp_angle(front_wheel_angle);
+    if (g_steering_mapping.valid) {
+        /* 使用映射表 */
+        steering_query_mapping(steering_wheel_angle, &left_wheel, &right_wheel);
+        /* 返回平均值 */
+        double front_wheel_angle = (left_wheel + right_wheel) / 2.0;
+        return steering_model_clamp_angle(front_wheel_angle);
+    } else {
+        /* 使用线性模型（后备方案） */
+        double front_wheel_angle = steering_wheel_angle / g_steering_config.steering_ratio;
+        
+        /* 应用零偏和增益补偿 */
+        front_wheel_angle = steering_model_apply_calibration(front_wheel_angle);
+        
+        /* 限制在有效范围内 */
+        return steering_model_clamp_angle(front_wheel_angle);
+    }
 }
 
 /**
@@ -104,6 +127,8 @@ double front_wheel_to_steering_wheel(double front_wheel_angle) {
  * v = 纵向速度 (m/s)
  * delta = 前轮转向角 (rad)
  * L = 轴距 (m)
+ * 
+ * 改进：如果映射表可用，使用Ackermann模型
  */
 double calculate_yaw_rate(double velocity, double steering_angle) {
     /* 避免低速噪声 */
@@ -121,30 +146,46 @@ double calculate_yaw_rate(double velocity, double steering_angle) {
  * @brief 更新转向角并应用低通滤波
  */
 double steering_model_update(double steering_wheel_angle, uint32_t timestamp) {
-    /* 步骤1：方向盘转角转前轮转向角 */
-    double front_wheel_angle = steering_wheel_to_front_wheel(steering_wheel_angle);
+    /* 步骤1：根据映射表查询前左轮和前右轮转角 */
+    if (g_steering_mapping.valid) {
+        steering_query_mapping(steering_wheel_angle, 
+                             &g_steering_state.left_wheel_angle,
+                             &g_steering_state.right_wheel_angle);
+    } else {
+        /* 使用线性模型 */
+        double basic = steering_wheel_angle / g_steering_config.steering_ratio;
+        g_steering_state.left_wheel_angle = basic;
+        g_steering_state.right_wheel_angle = basic;
+    }
     
-    /* 步骤2：计算转向角速率 */
+    /* 步骤2：计算平均转向角 */
+    g_steering_state.mean_wheel_angle = 
+        (g_steering_state.left_wheel_angle + g_steering_state.right_wheel_angle) / 2.0;
+    
+    /* 步骤3：应用校准 */
+    double calibrated_angle = steering_model_apply_calibration(g_steering_state.mean_wheel_angle);
+    
+    /* 步骤4：计算转向角速率 */
     if (g_steering_state.prev_timestamp > 0) {
         double dt = (timestamp - g_steering_state.prev_timestamp) / 1000.0;
         if (dt > 0 && dt < 1.0) {
             g_steering_state.steering_rate = 
-                (front_wheel_angle - g_steering_state.prev_steering_angle) / dt;
+                (calibrated_angle - g_steering_state.prev_steering_angle) / dt;
         }
     }
     
-    /* 步骤3：应用低通滤波 */
+    /* 步骤5：应用低通滤波 */
     if (g_steering_config.enable_steering_filter) {
         double alpha = g_steering_config.steering_filter_alpha;
         g_steering_state.filtered_steering_angle = 
             alpha * g_steering_state.filtered_steering_angle + 
-            (1.0 - alpha) * front_wheel_angle;
+            (1.0 - alpha) * calibrated_angle;
     } else {
-        g_steering_state.filtered_steering_angle = front_wheel_angle;
+        g_steering_state.filtered_steering_angle = calibrated_angle;
     }
     
-    /* 步骤4：更新状态 */
-    g_steering_state.prev_steering_angle = front_wheel_angle;
+    /* 步骤6：更新状态 */
+    g_steering_state.prev_steering_angle = calibrated_angle;
     g_steering_state.prev_timestamp = timestamp;
     
     return g_steering_state.filtered_steering_angle;
@@ -229,4 +270,204 @@ int steering_model_update_config(const SteeringConfig_t *config) {
     
     g_steering_config = *config;
     return 0;
+}
+
+/* ============================================================================
+ * 映射表操作函数
+ * ============================================================================ */
+
+/**
+ * @brief 线性插值辅助函数
+ * @param x 输入值
+ * @param x0, y0 第一个点
+ * @param x1, y1 第二个点
+ * @return 插值结果
+ */
+static double linear_interpolate(double x, double x0, double y0, double x1, double y1) {
+    if (fabs(x1 - x0) < 1e-9) {
+        return y0;
+    }
+    return y0 + (x - x0) * (y1 - y0) / (x1 - x0);
+}
+
+/**
+ * @brief 初始化转向映射表
+ * @param sw_samples 方向盘转角数组 (弧度)
+ * @param left_samples 前左轮转角数组 (弧度)
+ * @param right_samples 前右轮转角数组 (弧度)
+ * @param num_points 映射点数
+ * @return 0 成功，-1 失败
+ */
+int steering_mapping_init(const double *sw_samples, 
+                         const double *left_samples,
+                         const double *right_samples, 
+                         int num_points) {
+    if (!sw_samples || !left_samples || !right_samples || num_points < 2) {
+        return -1;
+    }
+    
+    /* 清理旧的映射表 */
+    steering_mapping_cleanup();
+    
+    /* 分配内存 */
+    g_steering_mapping.steering_wheel = (double *)malloc(num_points * sizeof(double));
+    g_steering_mapping.left_wheel = (double *)malloc(num_points * sizeof(double));
+    g_steering_mapping.right_wheel = (double *)malloc(num_points * sizeof(double));
+    
+    if (!g_steering_mapping.steering_wheel || 
+        !g_steering_mapping.left_wheel || 
+        !g_steering_mapping.right_wheel) {
+        steering_mapping_cleanup();
+        return -1;
+    }
+    
+    /* 复制数据 */
+    memcpy(g_steering_mapping.steering_wheel, sw_samples, num_points * sizeof(double));
+    memcpy(g_steering_mapping.left_wheel, left_samples, num_points * sizeof(double));
+    memcpy(g_steering_mapping.right_wheel, right_samples, num_points * sizeof(double));
+    
+    g_steering_mapping.num_points = num_points;
+    g_steering_mapping.valid = true;
+    
+    return 0;
+}
+
+/**
+ * @brief 查询映射表获取前轮转角
+ * @param steering_wheel_angle 方向盘转角 (弧度)
+ * @param left_wheel_angle 输出：前左轮转角 (弧度)
+ * @param right_wheel_angle 输出：前右轮转角 (弧度)
+ * @return 0 成功，-1 失败
+ */
+int steering_query_mapping(double steering_wheel_angle,
+                          double *left_wheel_angle,
+                          double *right_wheel_angle) {
+    if (!g_steering_mapping.valid || !left_wheel_angle || !right_wheel_angle) {
+        return -1;
+    }
+    
+    /* 查找插值区间 */
+    int idx = 0;
+    for (idx = 0; idx < g_steering_mapping.num_points - 1; idx++) {
+        if (steering_wheel_angle >= g_steering_mapping.steering_wheel[idx] &&
+            steering_wheel_angle <= g_steering_mapping.steering_wheel[idx + 1]) {
+            break;
+        }
+    }
+    
+    /* 边界处理 */
+    if (idx >= g_steering_mapping.num_points - 1) {
+        idx = g_steering_mapping.num_points - 2;
+    }
+    if (idx < 0) {
+        idx = 0;
+    }
+    
+    /* 线性插值查询 */
+    double x0 = g_steering_mapping.steering_wheel[idx];
+    double x1 = g_steering_mapping.steering_wheel[idx + 1];
+    
+    *left_wheel_angle = linear_interpolate(
+        steering_wheel_angle,
+        x0, g_steering_mapping.left_wheel[idx],
+        x1, g_steering_mapping.left_wheel[idx + 1]
+    );
+    
+    *right_wheel_angle = linear_interpolate(
+        steering_wheel_angle,
+        x0, g_steering_mapping.right_wheel[idx],
+        x1, g_steering_mapping.right_wheel[idx + 1]
+    );
+    
+    return 0;
+}
+
+/**
+ * @brief 计算平均前轮转角
+ * @param steering_wheel_angle 方向盘转角 (rad)
+ * @return 平均值 (弧度)
+ */
+double steering_compute_mean_angle(double steering_wheel_angle) {
+    /* 查询映射表获得前轮转角 */
+    double left = 0.0, right = 0.0;
+    
+    if (steering_query_mapping(steering_wheel_angle, &left, &right) == 0) {
+        return (left + right) / 2.0;
+    }
+    
+    /* 映射表无效，返回简单平均 */
+    return (g_steering_state.left_wheel_angle + g_steering_state.right_wheel_angle) / 2.0;
+}
+
+/**
+ * @brief 使用Ackermann模型计算航向角速率
+ * @param velocity 车辆纵向速度 (m/s)
+ * @param steering_wheel_angle 方向盘转角 (rad)
+ * @param wheelbase 轴距 (m)
+ * @return 航向角速率 (rad/s)
+ */
+double steering_calculate_yaw_rate_ackermann(double velocity,
+                                            double steering_wheel_angle,
+                                            double wheelbase) {
+    if (fabs(velocity) < 0.01 || fabs(wheelbase) < 0.01) {
+        return 0.0;
+    }
+    
+    /* 查询映射表获得前轮转角 */
+    double left_rad = 0.0, right_rad = 0.0;
+    
+    if (steering_query_mapping(steering_wheel_angle, &left_rad, &right_rad) != 0) {
+        /* 映射表无效，使用简单齿比模型 */
+        left_rad = steering_wheel_angle / g_steering_config.steering_ratio;
+        right_rad = steering_wheel_angle / g_steering_config.steering_ratio;
+    }
+    
+    /* Ackermann模型：考虑左右轮转角差异 */
+    double yaw_rate = velocity * (tan(left_rad) + tan(right_rad)) / (2.0 * wheelbase);
+    
+    return yaw_rate;
+}
+
+/**
+ * @brief 获取当前的前轮转角（左右分别）
+ * @param left_wheel 输出：前左轮转角
+ * @param right_wheel 输出：前右轮转角
+ * @param mean_angle 输出：平均转向角
+ * @return 0 成功，-1 失败
+ */
+int steering_get_wheel_angles(double *left_wheel,
+                             double *right_wheel,
+                             double *mean_angle) {
+    if (!left_wheel || !right_wheel || !mean_angle) {
+        return -1;
+    }
+    
+    *left_wheel = g_steering_state.left_wheel_angle;
+    *right_wheel = g_steering_state.right_wheel_angle;
+    *mean_angle = (g_steering_state.left_wheel_angle + g_steering_state.right_wheel_angle) / 2.0;
+    
+    return 0;
+}
+
+/**
+ * @brief 清理映射表资源
+ */
+void steering_mapping_cleanup(void) {
+    if (g_steering_mapping.steering_wheel) {
+        free(g_steering_mapping.steering_wheel);
+        g_steering_mapping.steering_wheel = NULL;
+    }
+    
+    if (g_steering_mapping.left_wheel) {
+        free(g_steering_mapping.left_wheel);
+        g_steering_mapping.left_wheel = NULL;
+    }
+    
+    if (g_steering_mapping.right_wheel) {
+        free(g_steering_mapping.right_wheel);
+        g_steering_mapping.right_wheel = NULL;
+    }
+    
+    g_steering_mapping.num_points = 0;
+    g_steering_mapping.valid = false;
 }

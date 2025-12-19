@@ -39,7 +39,13 @@ void motion_model_init(void) {
  * 改进的模型支持前进和后退，使用档位+速度组合判断方向：
  * x_{k+1} = x_k + |v| * cos(theta_k + sign(direction)*delta) * dt
  * y_{k+1} = y_k + |v| * sin(theta_k + sign(direction)*delta) * dt
- * theta_{k+1} = theta_k + sign(direction)*|v|*tan(delta)/L * dt
+ * theta_{k+1} = theta_k + sign(direction)*yaw_rate * dt
+ * 
+ * 航向角速率计算：
+ * - 如果配置了转向映射表：使用Ackermann模型
+ *   yaw_rate = v * (tan(delta_left) + tan(delta_right)) / (2*L)
+ * - 否则：使用单轨模型
+ *   yaw_rate = v * tan(delta) / L
  */
 VehicleState_t motion_model_predict(const VehicleState_t *state,
                                     double velocity,
@@ -75,19 +81,52 @@ VehicleState_t motion_model_predict(const VehicleState_t *state,
     int sign_v = (direction == DIRECTION_REVERSE) ? -1 : 1;
     double abs_v = fabs(velocity);
     
+    /* ========== 改进：查询转向映射表 ========== */
+    double left_wheel_angle = steering_angle;
+    double right_wheel_angle = steering_angle;
+    
+    if (steering_query_mapping(steering_angle, &left_wheel_angle, &right_wheel_angle) == 0) {
+        /* 映射表查询成功，已获得前左右轮转角 */
+        /* 注：实际转角已存储在steering_model的内部状态中 */
+    } else {
+        /* 映射表不可用，使用简单齿比转换 */
+        left_wheel_angle = steering_angle;
+        right_wheel_angle = steering_angle;
+    }
+    
     /* 转向角在后退时反向 */
-    double effective_delta = sign_v * steering_angle;
+    double effective_left_delta = sign_v * left_wheel_angle;
+    double effective_right_delta = sign_v * right_wheel_angle;
+    
+    /* ========== 改进：使用Ackermann几何计算航向角速率 ========== */
+    double yaw_rate;
+    
+    /* 检查是否使用Ackermann模型 */
+    double left_delta_diff = fabs(left_wheel_angle - right_wheel_angle);
+    if (left_delta_diff > 0.001) {
+        /* Ackermann模型：考虑左右轮转角差异 */
+        /* yaw_rate = v * (tan(delta_left) + tan(delta_right)) / (2*L) */
+        double tan_left = tan(effective_left_delta);
+        double tan_right = tan(effective_right_delta);
+        yaw_rate = abs_v * (tan_left + tan_right) / (2.0 * WHEELBASE);
+    } else {
+        /* 单轨模型：左右轮转角相同 */
+        /* yaw_rate = v * tan(delta) / L */
+        double effective_delta = sign_v * steering_angle;
+        double tan_delta = tan(effective_delta);
+        yaw_rate = abs_v * tan_delta / WHEELBASE;
+    }
     
     /* 位置更新 */
-    double cos_term = cos(state->theta + effective_delta);
-    double sin_term = sin(state->theta + effective_delta);
+    double mean_delta = (effective_left_delta + effective_right_delta) / 2.0;
+    double cos_term = cos(state->theta + mean_delta);
+    double sin_term = sin(state->theta + mean_delta);
     
     new_state.x = state->x + abs_v * cos_term * dt;
     new_state.y = state->y + abs_v * sin_term * dt;
     
     /* 航向角更新 */
-    double tan_delta = tan(effective_delta);
-    new_state.theta = state->theta + (sign_v * abs_v * tan_delta / WHEELBASE) * dt;
+    new_state.theta = state->theta + yaw_rate * dt;
     new_state.theta = normalize_angle(new_state.theta);
     
     new_state.v = velocity;
