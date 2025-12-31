@@ -7,3 +7,15 @@ build
 *.o
 .vscode
 .idea
+*.csv
+*.png
+*.jpg
+*.bmp
+*.tiff
+*.jpeg
+__pycache__
+rtk_trajectory_plots
+trajectory_comparison
+vehicle_localization_plots
+build*
+cmake-*

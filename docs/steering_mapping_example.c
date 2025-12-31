@@ -127,7 +127,7 @@ int main(int argc, char *argv[]) {
         .steering_filter_alpha = 0.15f
     };
     
-    if (steering_model_init(&steering_config) != 0) {
+    if (steering_config_init(&steering_config) != 0) {
         printf("Error: Failed to initialize steering model\n");
         return -1;
     }

@@ -26,9 +26,9 @@ static inline void vehicle_state_float_to_internal(
 {
     internal->x = (double)external->x;
     internal->y = (double)external->y;
-    internal->theta = (double)external->theta;
+    internal->theta = (double)external->heading;
     internal->v = (double)external->v;
-    internal->delta = (double)external->delta;
+    internal->delta = (double)external->steering_angle;
     internal->timestamp = external->timestamp;
     internal->gear = external->gear;
     internal->direction = external->direction;
@@ -45,9 +45,9 @@ static inline void vehicle_state_internal_to_float(
 {
     external->x = (float)internal->x;
     external->y = (float)internal->y;
-    external->theta = (float)internal->theta;
+    external->heading = (float)internal->theta;
     external->v = (float)internal->v;
-    external->delta = (float)internal->delta;
+    external->steering_angle = (float)internal->delta;
     external->timestamp = internal->timestamp;
     external->gear = internal->gear;
     external->direction = internal->direction;

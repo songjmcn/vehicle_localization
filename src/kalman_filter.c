@@ -14,53 +14,54 @@
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 /* ========== 矩阵操作函数 ========== */
 
 /**
  * @brief 矩阵乘法 C = A * B (n x m) * (m x p)
  */
-static void matrix_multiply(double *A, double *B, double *C,
-                           int n, int m, int p) {
-    memset(C, 0, n * p * sizeof(double));
-    
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < p; j++) {
-            for (int k = 0; k < m; k++) {
-                C[i * p + j] += A[i * m + k] * B[k * p + j];
-            }
-        }
-    }
-}
+// static void matrix_multiply(double *A, double *B, double *C,
+//                            int n, int m, int p) {
+//     memset(C, 0, n * p * sizeof(double));
+//
+//     for (int i = 0; i < n; i++) {
+//         for (int j = 0; j < p; j++) {
+//             for (int k = 0; k < m; k++) {
+//                 C[i * p + j] += A[i * m + k] * B[k * p + j];
+//             }
+//         }
+//     }
+// }
 
 /**
  * @brief 矩阵转置 B = A^T (n x m -> m x n)
  */
-static void matrix_transpose(double *A, double *B, int n, int m) {
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < m; j++) {
-            B[j * n + i] = A[i * m + j];
-        }
-    }
-}
+// static void matrix_transpose(double *A, double *B, int n, int m) {
+//     for (int i = 0; i < n; i++) {
+//         for (int j = 0; j < m; j++) {
+//             B[j * n + i] = A[i * m + j];
+//         }
+//     }
+// }
 
 /**
  * @brief 矩阵加法 C = A + B (n x m)
  */
-static void matrix_add(double *A, double *B, double *C, int n, int m) {
-    for (int i = 0; i < n * m; i++) {
-        C[i] = A[i] + B[i];
-    }
-}
+// static void matrix_add(double *A, double *B, double *C, int n, int m) {
+//     for (int i = 0; i < n * m; i++) {
+//         C[i] = A[i] + B[i];
+//     }
+// }
 
 /**
  * @brief 矩阵减法 C = A - B (n x m)
  */
-static void matrix_subtract(double *A, double *B, double *C, int n, int m) {
-    for (int i = 0; i < n * m; i++) {
-        C[i] = A[i] - B[i];
-    }
-}
+// static void matrix_subtract(double *A, double *B, double *C, int n, int m) {
+//     for (int i = 0; i < n * m; i++) {
+//         C[i] = A[i] - B[i];
+//     }
+// }
 
 /**
  * @brief 矩阵求逆 (仅支持3x3和5x5)
@@ -96,66 +97,66 @@ static int matrix_inverse_3x3(double *A, double *A_inv) {
 /**
  * @brief 5x5矩阵求逆（高斯消元法）
  */
-static int matrix_inverse_5x5(double A[5][5], double A_inv[5][5]) {
-    double temp[5][10];
-    
-    /* 构造增广矩阵 [A | I] */
-    for (int i = 0; i < 5; i++) {
-        for (int j = 0; j < 5; j++) {
-            temp[i][j] = A[i][j];
-            temp[i][j + 5] = (i == j) ? 1.0 : 0.0;
-        }
-    }
-    
-    /* 高斯消元 */
-    for (int i = 0; i < 5; i++) {
-        /* 找主元 */
-        int pivot = i;
-        for (int k = i + 1; k < 5; k++) {
-            if (fabs(temp[k][i]) > fabs(temp[pivot][i])) {
-                pivot = k;
-            }
-        }
-        
-        if (fabs(temp[pivot][i]) < 1e-10) {
-            return -1;  /* 矩阵奇异 */
-        }
-        
-        /* 行交换 */
-        if (pivot != i) {
-            for (int j = 0; j < 10; j++) {
-                double t = temp[i][j];
-                temp[i][j] = temp[pivot][j];
-                temp[pivot][j] = t;
-            }
-        }
-        
-        /* 主元化为1 */
-        double div = temp[i][i];
-        for (int j = 0; j < 10; j++) {
-            temp[i][j] /= div;
-        }
-        
-        /* 消元 */
-        for (int k = 0; k < 5; k++) {
-            if (k != i) {
-                double mul = temp[k][i];
-                for (int j = 0; j < 10; j++) {
-                    temp[k][j] -= mul * temp[i][j];
-                }
-            }
-        }
-    }
-    
-    /* 提取逆矩阵 */
-    for (int i = 0; i < 5; i++) {
-        for (int j = 0; j < 5; j++) {
-            A_inv[i][j] = temp[i][j + 5];
-        }
-    }
-    
-    return 0;
-}
+// static int matrix_inverse_5x5(double A[5][5], double A_inv[5][5]) {
+//     double temp[5][10];
+//
+//     /* 构造增广矩阵 [A | I] */
+//     for (int i = 0; i < 5; i++) {
+//         for (int j = 0; j < 5; j++) {
+//             temp[i][j] = A[i][j];
+//             temp[i][j + 5] = (i == j) ? 1.0 : 0.0;
+//         }
+//     }
+//
+//     /* 高斯消元 */
+//     for (int i = 0; i < 5; i++) {
+//         /* 找主元 */
+//         int pivot = i;
+//         for (int k = i + 1; k < 5; k++) {
+//             if (fabs(temp[k][i]) > fabs(temp[pivot][i])) {
+//                 pivot = k;
+//             }
+//         }
+//
+//         if (fabs(temp[pivot][i]) < 1e-10) {
+//             return -1;  /* 矩阵奇异 */
+//         }
+//
+//         /* 行交换 */
+//         if (pivot != i) {
+//             for (int j = 0; j < 10; j++) {
+//                 double t = temp[i][j];
+//                 temp[i][j] = temp[pivot][j];
+//                 temp[pivot][j] = t;
+//             }
+//         }
+//
+//         /* 主元化为1 */
+//         double div = temp[i][i];
+//         for (int j = 0; j < 10; j++) {
+//             temp[i][j] /= div;
+//         }
+//
+//         /* 消元 */
+//         for (int k = 0; k < 5; k++) {
+//             if (k != i) {
+//                 double mul = temp[k][i];
+//                 for (int j = 0; j < 10; j++) {
+//                     temp[k][j] -= mul * temp[i][j];
+//                 }
+//             }
+//         }
+//     }
+//
+//     /* 提取逆矩阵 */
+//     for (int i = 0; i < 5; i++) {
+//         for (int j = 0; j < 5; j++) {
+//             A_inv[i][j] = temp[i][j + 5];
+//         }
+//     }
+//
+//     return 0;
+// }
 
 /**
  * @brief 4x4矩阵求逆（高斯消元法）(新增)
@@ -247,11 +248,13 @@ int kalman_filter_init(KalmanFilter_t *kf,
     kf->state.x_hat[3] = state_internal.v;
     kf->state.x_hat[4] = state_internal.delta;
     
-    /* 初始化协方差矩阵 */
+    /* 初始化协方差矩阵（合理的初始不确定性） */
     memset(kf->state.P, 0, sizeof(kf->state.P));
-    for (int i = 0; i < 5; i++) {
-        kf->state.P[i][i] = 0.1;
-    }
+    kf->state.P[0][0] = 10.0;   /* x位置：10米初始不确定性 */
+    kf->state.P[1][1] = 10.0;   /* y位置：10米初始不确定性 */
+    kf->state.P[2][2] = 1.0;    /* heading：1弧度（约57度） */
+    kf->state.P[3][3] = 0.5;    /* velocity：0.5 m/s */
+    kf->state.P[4][4] = 0.2;    /* steering_angle：0.2弧度（约11度） */
     
     /* 保存噪声参数和校准参数 (转换为 double) */
     kf->noise = *noise;  /* 复制 float 版本 */
@@ -271,6 +274,9 @@ int kalman_filter_init(KalmanFilter_t *kf,
     kf->fusion_config.imu_steering_vel_threshold = 0.5f;
     kf->fusion_config.imu_steering_weight = 1.0f;
     kf->fusion_config.enable_adaptive_weighting = false;
+    
+    /* 初始化转向模型配置为NULL */
+    kf->steering_config = NULL;
     
     return 0;
 }
@@ -297,16 +303,32 @@ int kalman_filter_init_with_mode(KalmanFilter_t *kf,
     return 0;
 }
 
-void kalman_filter_predict(KalmanFilter_t *kf,
-                          double velocity,
-                          double steering_angle,
-                          uint32_t timestamp) {
-    if (!kf || kf->state.previous_timestamp == 0) {
+/**
+ * @brief 设置卡尔曼滤波器的转向模型配置
+ */
+int kalman_filter_set_steering_config(KalmanFilter_t *kf, SteeringModel_t *steering_config) {
+    if (!kf) {
+        return -1;
+    }
+    kf->steering_config = steering_config;
+    return 0;
+}
+
+/**
+ * @brief 预测步骤（带有运动方向）
+ * 这个版本接收已计算的方向，避免在预测函数中重复计算方向
+ */
+void kalman_filter_predict_with_state(KalmanFilter_t *kf,
+                                       const VehicleState_t *state_with_direction,
+                                       double velocity,
+                                       double steering_angle,
+                                       uint64_t timestamp) {
+    if (!kf || !state_with_direction || kf->state.previous_timestamp == 0) {
         kf->state.previous_timestamp = timestamp;
         return;
     }
     
-    double dt = (timestamp - kf->state.previous_timestamp) / 1000.0;
+    double dt = (double)(timestamp - kf->state.previous_timestamp) / 1000.0;
     if (dt <= 0 || dt > 1.0) {
         kf->state.previous_timestamp = timestamp;
         return;
@@ -316,20 +338,15 @@ void kalman_filter_predict(KalmanFilter_t *kf,
     double cal_velocity = velocity * kf->calibration.wheel_calibration_factor;
     double cal_steering = steering_angle - kf->calibration.steering_angle_offset;
     cal_steering *= kf->calibration.steering_angle_gain;
-    cal_steering = clamp(cal_steering, -STEERING_ANGLE_MAX, STEERING_ANGLE_MAX);
-    
-    /* 当前状态 */
-    VehicleState_t current_state;
-    current_state.x = kf->state.x_hat[0];
-    current_state.y = kf->state.x_hat[1];
-    current_state.theta = kf->state.x_hat[2];
-    current_state.v = kf->state.x_hat[3];
-    current_state.delta = kf->state.x_hat[4];
-    current_state.gear = kf->state.previous_gear;  /* 新增：设置档位 */
-    current_state.timestamp = timestamp;
-    
+    cal_steering = clamp(cal_steering, -(kf->steering_config->steering_config.max_steering_wheel_angle), kf->steering_config->steering_config.max_steering_wheel_angle);
+    printf("velocity=%f, steering angle=%f, cal_velocity=%f, cal_steering=%f\n", velocity, steering_angle, cal_velocity, cal_steering);
+    /* 当前状态（直接使用传入的状态，其中包含已计算的方向） */
+    VehicleState_t current_state = *state_with_direction;
+    current_state.steering_angle = kf->state.x_hat[4];
+
     /* 运动模型预测 */
-    VehicleState_t predicted_state = motion_model_predict(&current_state,
+    VehicleState_t predicted_state = motion_model_predict(kf->steering_config,
+                                                           &current_state,
                                                            cal_velocity,
                                                            cal_steering,
                                                            dt);
@@ -337,50 +354,82 @@ void kalman_filter_predict(KalmanFilter_t *kf,
     /* 更新状态 */
     kf->state.x_hat[0] = predicted_state.x;
     kf->state.x_hat[1] = predicted_state.y;
-    kf->state.x_hat[2] = predicted_state.theta;
+    kf->state.x_hat[2] = predicted_state.heading;
     kf->state.x_hat[3] = predicted_state.v;
-    kf->state.x_hat[4] = predicted_state.delta;
-    kf->state.previous_gear = predicted_state.gear;  /* 新增：更新档位 */
-    
+    kf->state.x_hat[4] = predicted_state.steering_angle;
+    kf->state.previous_gear = predicted_state.gear;
+
     /* 计算雅可比矩阵 */
     double F[5][5];
+    memset(F, 0, sizeof(F));
     motion_model_jacobian(&current_state, cal_velocity, cal_steering, dt, F);
-    
-    /* 协方差预测：P = F * P * F^T + Q */
-    double F_P[5][5];
+
+    /* 协方差矩阵的预测更新（P = F*P*F^T + Q） */
+    double FP[5][5], FPF_T[5][5];
+
+    /* 计算 F*P */
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 5; j++) {
-            F_P[i][j] = 0;
+            FP[i][j] = 0.0;
             for (int k = 0; k < 5; k++) {
-                F_P[i][j] += F[i][k] * kf->state.P[k][j];
+                FP[i][j] += F[i][k] * kf->state.P[k][j];
             }
         }
     }
-    
-    double F_T[5][5];
+
+    /* 计算 (F*P)*F^T */
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 5; j++) {
-            F_T[i][j] = F[j][i];
-        }
-    }
-    
-    for (int i = 0; i < 5; i++) {
-        for (int j = 0; j < 5; j++) {
-            kf->state.P[i][j] = 0;
+            FPF_T[i][j] = 0.0;
             for (int k = 0; k < 5; k++) {
-                kf->state.P[i][j] += F_P[i][k] * F_T[k][j];
+                FPF_T[i][j] += FP[i][k] * F[j][k];
             }
         }
     }
-    
-    /* 加入过程噪声 */
-    kf->state.P[0][0] += kf->noise.q_x * kf->noise.q_x;
-    kf->state.P[1][1] += kf->noise.q_y * kf->noise.q_y;
-    kf->state.P[2][2] += kf->noise.q_theta * kf->noise.q_theta;
-    kf->state.P[3][3] += kf->noise.q_v * kf->noise.q_v;
-    kf->state.P[4][4] += kf->noise.q_delta * kf->noise.q_delta;
-    
+
+    /* P = F*P*F^T + Q */
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 5; j++) {
+            kf->state.P[i][j] = FPF_T[i][j];
+        }
+    }
+
+    /* 加上过程噪声Q */
+    kf->state.P[0][0] += kf->noise.q_x;
+    kf->state.P[1][1] += kf->noise.q_y;
+    kf->state.P[2][2] += kf->noise.q_theta;
+    kf->state.P[3][3] += kf->noise.q_v;
+    kf->state.P[4][4] += kf->noise.q_delta;
+
     kf->state.previous_timestamp = timestamp;
+}
+
+/**
+ * @brief 预测步骤（原有版本，为了向后兼容）
+ * 现在调用 kalman_filter_predict_with_state 的简化版本
+ */
+void kalman_filter_predict(KalmanFilter_t *kf,
+                          double velocity,
+                          double steering_angle,
+                          uint64_t timestamp) {
+    if (!kf) {
+        return;
+    }
+
+    /* === 优化：简化版本 - 直接调用带状态的预测函数 === */
+    /* 如果上层已经计算并传入方向，应使用 kalman_filter_predict_with_state */
+    VehicleState_t current_state;
+    current_state.x = kf->state.x_hat[0];
+    current_state.y = kf->state.x_hat[1];
+    current_state.heading = kf->state.x_hat[2];
+    current_state.v = kf->state.x_hat[3];
+    current_state.steering_angle = kf->state.x_hat[4];
+    current_state.gear = kf->state.previous_gear;
+    current_state.timestamp = timestamp;
+    current_state.direction = DIRECTION_INVALID;  /* 标记未计算 */
+
+    /* 调用新函数完成实际工作 */
+    kalman_filter_predict_with_state(kf, &current_state, velocity, steering_angle, timestamp);
 }
 
 void kalman_filter_update(KalmanFilter_t *kf,
@@ -438,6 +487,16 @@ void kalman_filter_update_basic(KalmanFilter_t *kf,
     /* 轮滑动时增加轮速计噪声权重 */
     if (kf->diagnostics.is_wheel_slipping) {
         R[0][0] *= 4.0;
+    }
+    
+    /* === 关键调整：当速度非常小时，增加轮速计观测的噪声权重 ===
+     * 原因：在低速或停止时，脉冲计数器的离散化误差非常显著
+     * 不应该让微弱的轮速测量完全压制motion_model的预测
+     * 这样可以允许基于steering_angle和heading变化的预测更新
+     */
+    if (fabs(sensor_data->wheel_odometry.velocity) < 0.1) {
+        /* 低速时，轮速计观测噪声增加10倍，降低其影响力 */
+        R[0][0] *= 10.0;
     }
     
     /* 测量模型的雅可比矩阵 H (3x5) */
@@ -769,10 +828,12 @@ void kalman_filter_get_state(const KalmanFilter_t *kf,
     /* 将内部 double 精度状态转换为外部 float 版本 */
     state->x = (float)kf->state.x_hat[0];
     state->y = (float)kf->state.x_hat[1];
-    state->theta = (float)kf->state.x_hat[2];
+    state->heading = (float)kf->state.x_hat[2];
     state->v = (float)kf->state.x_hat[3];
-    state->delta = (float)kf->state.x_hat[4];
+    state->steering_angle = (float)kf->state.x_hat[4];
     state->timestamp = kf->state.previous_timestamp;
+    state->gear = kf->state.previous_gear;
+    state->direction = DIRECTION_INVALID;
 }
 
 DiagnosticsInfo_t kalman_filter_get_diagnostics(const KalmanFilter_t *kf) {
@@ -859,14 +920,14 @@ int steering_jitter_filter_init(SteeringJitterFilter_t *filter) {
     return 0;
 }
 
-int steering_jitter_filter_update(SteeringJitterFilter_t *filter,
-                                   double steering_angle) {
+int steering_jitter_filter_update(SteeringJitterFilter_t *filter,const SteeringConfig_t *steering_config,
+                                   const double steering_angle) {
     if (!filter) {
         return -1;
     }
     
     /* 限制转向角范围 */
-    double clamped_angle = clamp(steering_angle, -STEERING_ANGLE_MAX, STEERING_ANGLE_MAX);
+    double clamped_angle = clamp(steering_angle, -steering_config->max_steering_wheel_angle, steering_config->max_steering_wheel_angle);
     
     /* 更新低通过滤 */
     if (filter->update_count == 0) {
@@ -987,7 +1048,7 @@ void steering_jitter_filter_reset(SteeringJitterFilter_t *filter) {
 void kalman_filter_predict_float(KalmanFilter_t *kf,
                                  float velocity,
                                  float steering_angle,
-                                 uint32_t timestamp) {
+                                 uint64_t timestamp) {
     if (!kf) {
         return;
     }

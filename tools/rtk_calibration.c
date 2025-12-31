@@ -67,7 +67,7 @@ int rtk_calibration_add_point(RTKCalibrationManager_t *manager,
     /* 计算误差 */
     point->position_error_x = rtk_state->x - odometry_state->x;
     point->position_error_y = rtk_state->y - odometry_state->y;
-    point->heading_error = normalize_angle(rtk_state->heading - odometry_state->theta);
+    point->heading_error = normalize_angle(rtk_state->heading - odometry_state->heading);
     
     /* 更新累积统计 */
     manager->cumulative_x_error += point->position_error_x;
@@ -265,7 +265,7 @@ void rtk_calibration_online_update(RTKCalibrationManager_t *manager,
     /* 计算当前误差 */
     double pos_error_x = rtk_state->x - odometry_state->x;
     double pos_error_y = rtk_state->y - odometry_state->y;
-    double heading_error = normalize_angle(rtk_state->heading - odometry_state->theta);
+    double heading_error = normalize_angle(rtk_state->heading - odometry_state->heading);
     
     /* 在线更新轮速计校准因子（使用简单的低通滤波） */
     double current_position_error = sqrt(pos_error_x * pos_error_x + pos_error_y * pos_error_y);

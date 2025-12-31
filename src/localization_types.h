@@ -20,13 +20,12 @@
 #define MAX_HISTORY_SIZE 100
 
 /* 速度阈值 */
-#define V_STATIC_THRESHOLD 0.1  /* 静止速度阈值 (m/s), 优化为float精度推荐值 */
+#define V_STATIC_THRESHOLD 0.05 /* 静止速度阈值 (m/s), 优化为float精度推荐值 */
 #define V_LOW_SPEED_THRESHOLD 1.5  /* 低速阈值 (m/s) */
 #define V_PARKING_MAX 2.0  /* 自动泊车最大速度 (m/s) */
 
 /* 传感器阈值 */
 #define WHEEL_SLIP_ACCEL_THRESHOLD 0.3  /* 轮滑动加速度阈值 (m/s²) */
-#define STEERING_ANGLE_MAX 0.628  /* 最大转向角 (36°，约0.628 rad) */
 
 /* ========== 融合算法配置 ========== */
 
@@ -64,7 +63,12 @@ typedef enum {
     GEAR_LOW = 4,         /**< L档（低速档） */
     GEAR_INVALID = -1     /**< 无效档位 */
 } VehicleGear_t;
-
+typedef enum{
+    WHEEL_DIRECRTION_INVALID = 0, /**< 无效方向 */
+    WHEEL_DIRECTION_FORWARD = 1,  /**< 车轮前进 */
+    WHEEL_DIRECTION_REVERSE = 2,   /**< 车轮后退 */
+    WHEEL_DIRECTION_STOP = 3,
+}WheelDirection_t;
 /**
  * @brief 车辆运动方向枚举（派生值）
  * 从档位和速度综合计算而来
@@ -72,7 +76,8 @@ typedef enum {
 typedef enum {
     DIRECTION_STATIONARY = 0,    /**< 静止（或速度近似为0） */
     DIRECTION_FORWARD = 1,       /**< 前进方向 */
-    DIRECTION_REVERSE = -1       /**< 后退方向 */
+    DIRECTION_REVERSE = -1,      /**< 后退方向 */
+    DIRECTION_INVALID = 2        /**< 无效/错误方向（传感器故障或逻辑冲突） */
 } VehicleDirection_t;
 
 /* ========== 数据结构定义 ========== */
@@ -81,12 +86,12 @@ typedef enum {
  * @brief 车辆状态结构体 (外部 API 使用 float 版本)
  */
 typedef struct {
-    float x;      /**< x位置 (m) */
-    float y;      /**< y位置 (m) */
-    float theta;  /**< 航向角 (rad) */
-    float v;      /**< 速度 (m/s) */
-    float delta;  /**< 转向角 (rad) */
-    uint32_t timestamp;  /**< 时间戳 (ms) */
+    float x;              /**< 后轮轴中心X位置(m) */
+    float y;              /**< 后轮轴中心Y位置(m) */
+    float heading;        /**< 偏航角(rad) */
+    float v;              /**< 后轮纵向速度(m/s) */
+    float steering_angle; /**< 前轮转向角(rad)，后退时反向 */
+    uint64_t timestamp;  /**< 时间戳 (ms) */
     VehicleGear_t gear;  /**< 车辆档位 */
     VehicleDirection_t direction;  /**< 推导的运动方向 */
 } VehicleState_t;
@@ -101,7 +106,7 @@ typedef struct {
     float gyro_x;    /**< x轴角速度 (rad/s) */
     float gyro_y;    /**< y轴角速度 (rad/s) */
     float gyro_z;    /**< z轴角速度 (rad/s) */
-    uint32_t timestamp;  /**< 时间戳 (ms) */
+    uint64_t timestamp;  /**< 时间戳 (ms) */
 } IMUData_t;
 
 /**
@@ -112,6 +117,7 @@ typedef struct {
     double wheel_radius;             /**< 轮半径 (m)，如 0.35 */
     double low_speed_threshold;      /**< 低速阈值 (m/s)，默认 0.3 */
     uint32_t pulse_timeout_ms;       /**< 脉冲超时 (ms)，默认 500 */
+    uint32_t max_count;              /**< 脉冲计数器最大值+1，用于处理溢出（如65535时设为65536）。0表示不处理溢出 */
 } WheelConfig_t;
 
 /**
@@ -119,16 +125,21 @@ typedef struct {
  */
 typedef struct {
     uint32_t pulse_count;    /**< 脉冲计数（累计或增量） */
-    uint32_t timestamp;      /**< 时间戳 (ms) */
+    uint64_t timestamp;      /**< 时间戳 (ms) */
 } WheelPulseData_t;
 
 /**
  * @brief 轮速计数据结构体 (外部 API 使用 float 版本)
+ * 
+ * 包含轮速处理后的速度、距离以及左右轮的运动方向状态
  */
 typedef struct {
-    float velocity;   /**< 速度 (m/s) */
-    float distance;   /**< 积分距离 (m) */
-    uint32_t timestamp;  /**< 时间戳 (ms) */
+    float velocity;                        /**< 速度 (m/s) */
+    float distance;                        /**< 积分距离 (m) */
+    uint64_t timestamp;                    /**< 时间戳 (ms) */
+    VehicleGear_t gear;                    /**< 档位（从传感器数据传入） */
+    WheelDirection_t rear_left_direction;  /**< 左后轮运动方向 */
+    WheelDirection_t rear_right_direction; /**< 右后轮运动方向 */
 } WheelOdometryData_t;
 
 /**
@@ -137,7 +148,7 @@ typedef struct {
 typedef struct {
     float steering_angle;  /**< 转向角 (rad) */
     float steering_rate;   /**< 转向角速率 (rad/s) */
-    uint32_t timestamp;  /**< 时间戳 (ms) */
+    uint64_t timestamp;  /**< 时间戳 (ms) */
 } SteeringData_t;
 
 /**
@@ -148,18 +159,28 @@ typedef struct {
     float y;      /**< RTK y位置 (m) */
     float z;      /**< 高度 (m) */
     float heading;  /**< RTK航向角 (rad) */
-    uint32_t timestamp;  /**< 时间戳 (ms) */
+    uint64_t timestamp;  /**< 时间戳 (ms) */
     uint8_t quality;  /**< 定位质量 (0-5, 5最优) */
 } RTKData_t;
 
 /**
  * @brief 传感器读数融合结构体
+ * 
+ * 集成多种传感器数据，支持脉冲计数模式和直接速度模式
  */
 typedef struct {
     IMUData_t imu;
     WheelOdometryData_t wheel_odometry;
     SteeringData_t steering;
-    uint32_t timestamp;  /**< 融合时间戳 */
+    VehicleGear_t gear;                      /**< 当前档位 */
+    uint64_t timestamp;                      /**< 融合时间戳 */
+    
+    /* === 轮速脉冲处理相关字段 === */
+    uint32_t rear_left_wheel_count;              /**< 脉冲计数（可选，脉冲模式使用） */
+    uint32_t rear_right_wheel_count;              /**< 脉冲计数（可选，脉冲模式使用） */
+    WheelDirection_t rear_left_wheel_direction;  /**< 左后轮运动状态 */
+    WheelDirection_t rear_right_wheel_direction; /**< 右后轮运动状态 */
+    bool has_wheel_pulse;                    /**< 是否包含脉冲数据（true=脉冲模式，false=速度模式） */
 } SensorReadings_t;
 
 /**
@@ -211,7 +232,7 @@ typedef struct {
 typedef struct {
     double x_hat[5];        /**< 状态估计 [x, y, theta, v, delta] */
     double P[5][5];         /**< 协方差矩阵 5x5 */
-    uint32_t previous_timestamp;  /**< 上一时间戳 */
+    uint64_t previous_timestamp;  /**< 上一时间戳 */
     VehicleGear_t previous_gear;  /**< 上一时刻档位 */
 } FilterState_t;
 
@@ -276,20 +297,26 @@ static inline VehicleDirection_t derive_direction(VehicleGear_t gear, double vel
     /* 档位优先判断 */
     switch (gear) {
         case GEAR_REVERSE:
-            return DIRECTION_REVERSE;  /* R档必为后退 */
+            return DIRECTION_REVERSE;  /* R档明确为后退 */
         case GEAR_DRIVE:
         case GEAR_LOW:
-            return DIRECTION_FORWARD;  /* D/L档为前进 */
+            return DIRECTION_FORWARD;  /* D/L档明确为前进 */
         case GEAR_PARK:
         case GEAR_NEUTRAL:
-        case GEAR_INVALID:
-        default:
-            /* 静止档位使用速度判断 */
+            /* P/N档下判断静止 */
             if (fabs(velocity) < V_STATIC_THRESHOLD) {
                 return DIRECTION_STATIONARY;
             }
-            /* 档位无效时，用速度信号作为备选 */
-            return (velocity > 0.0) ? DIRECTION_FORWARD : DIRECTION_REVERSE;
+            /* P/N下有速度则异常，返回INVALID */
+            return DIRECTION_INVALID;
+        case GEAR_INVALID:
+        default:
+            /* 无效档位，根据速度备选判断 */
+            if (fabs(velocity) < V_STATIC_THRESHOLD) {
+                return DIRECTION_STATIONARY;
+            }
+            /* 档位无效时不能确定方向 */
+            return DIRECTION_INVALID;
     }
 }
 
@@ -334,6 +361,50 @@ static inline double clamp(double value, double min, double max) {
     if (value < min) return min;
     if (value > max) return max;
     return value;
+}
+
+/* ========== 统一方向推导系统（一处计算，全处使用）========== */
+
+/**
+ * @brief 获取速度符号（从方向枚举转换为符号值）
+ * 用于后续模块直接使用，避免重复计算
+ *
+ * @param direction 运动方向（已计算的方向）
+ * @return +1 (前进), -1 (后退), 0 (停止)
+ */
+static inline int get_sign_v_from_direction(VehicleDirection_t direction) {
+    if (direction == DIRECTION_REVERSE) {
+        return -1;
+    } else if (direction == DIRECTION_STATIONARY) {
+        return 0;
+    } else {
+        return 1;  /* DIRECTION_FORWARD or DIRECTION_INVALID */
+    }
+}
+
+/**
+ * @brief 获取有效转向角（考虑运动方向的转向角）
+ * 用于后续模块直接使用，避免重复计算
+ * 后退时转向角反向，前进时保持不变
+ *
+ * @param steering_angle 原始转向角 (rad)
+ * @param direction 运动方向（已计算的方向）
+ * @return 有效转向角（考虑方向的转向角）
+ */
+static inline double get_effective_steering_angle(double steering_angle, VehicleDirection_t direction) {
+    int sign_v = get_sign_v_from_direction(direction);
+    return (double)sign_v * steering_angle;
+}
+
+/**
+ * @brief 检查方向是否有效（不是异常状态）
+ * 用于后续模块判断是否能使用direction字段
+ *
+ * @param direction 运动方向
+ * @return true 有效，false 无效或异常
+ */
+static inline bool is_direction_valid(VehicleDirection_t direction) {
+    return (direction != DIRECTION_INVALID);
 }
 
 #endif /* LOCALIZATION_TYPES_H */

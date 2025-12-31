@@ -1,11 +1,37 @@
 /**
  * @file motion_model.c
- * @brief 运动模型实现
- * 
- * 本文件实现方案 B（混合精度）的运动模型：
- * - 公共 API 使用 float 版本
- * - 内部计算使用 double 精度
- * - 包含转向角转换模块的集成
+ * @brief ISO 8855标准运动模型实现（后轴中心原点）
+ *
+ * @details
+ * 本模块实现符合ISO 8855标准的车辆单轨运动模型：
+ *
+ * **坐标系定义：**
+ * - 原点：后轮轴中心（RAC - Rear Axle Center）
+ * - X轴：纵向（前方为正）
+ * - Y轴：横向（左方为正）
+ * - 参考帧：车体固定坐标系（body-fixed）
+ *
+ * **运动方程：**
+ * ```
+ * dx/dt = v·cos(ψ)
+ * dy/dt = v·sin(ψ)
+ * dψ/dt = (v/L)·tan(δ_eff)
+ * ```
+ * 其中：
+ *   v = 后轮轴中心纵向速度 (m/s)，来自后轮编码器
+ *   ψ = 车身偏航角 (rad)
+ *   δ = 前轮转向角 (rad)
+ *   δ_eff = sign(v)·δ（后退时自动反向）
+ *   L = 轴距 (m)
+ *
+ * **非完整约束：**
+ * - 后轮中心的速度必须沿车身纵向轴
+ * - 后轮不能侧滑（vy = 0 at rear axle）
+ *
+ * **实现特性：**
+ * - 支持前进和后退运动
+ * - 后退时自动反向转向角以维持直观的控制
+ * - 支持Ackermann转向几何
  */
 
 #include "motion_model.h"
@@ -14,123 +40,172 @@
 #include "steering_model.h"
 #include <math.h>
 #include <string.h>
+#include <stdio.h>
 
-void motion_model_init(void) {
+int motion_model_init(SteeringModel_t *mode, SteeringConfig_t *config,SteeringMappingTable_t *mapping_table) {
+    if(mode == NULL || config == NULL || mapping_table == NULL){ 
+        return -1;
+    }   
     /* 初始化运动模型参数 */
     
     /* 初始化转向模型 */
-    SteeringConfig_t steering_config = {
-        .steering_ratio = 16.0f,              /* 方向盘齿比 16:1 */
-        .max_steering_wheel_angle = 3.14159f, /* ±180° */
-        .max_front_wheel_angle = 0.628f,      /* ±36° (0.628 rad) */
-        .wheelbase = 2.7f,                    /* 轴距 2.7m */
-        .steering_angle_offset = 0.0f,        /* 零偏补偿 */
-        .steering_angle_gain = 1.0f,          /* 增益系数 */
-        .enable_steering_filter = true,       /* 启用低通滤波 */
-        .steering_filter_alpha = 0.15f        /* 滤波系数 */
-    };
+    if(steering_config_init(mode,config) != 0){
+        return -1;
+    }
+    if (mapping_table->valid && steering_mapping_init_ex(mode,mapping_table)!=0)
+    {
+        /* code */
+        return -1;
+    }
+    return 0;
     
-    steering_model_init(&steering_config);
 }
 
 /**
  * @brief 单轨模型的预测函数
  * 
- * 改进的模型支持前进和后退，使用档位+速度组合判断方向：
- * x_{k+1} = x_k + |v| * cos(theta_k + sign(direction)*delta) * dt
- * y_{k+1} = y_k + |v| * sin(theta_k + sign(direction)*delta) * dt
- * theta_{k+1} = theta_k + sign(direction)*yaw_rate * dt
+ * 倒车时转向角自动反向：
+ * - 有效转向角：δ_eff = sign(v)·δ（后退时反向）
+ * - 航向角速率：dψ/dt = (v/L)·tan(δ_eff)
+ * - 位置更新：dx = v·cos(ψ), dy = v·sin(ψ)（使用有符号速度）
  * 
- * 航向角速率计算：
- * - 如果配置了转向映射表：使用Ackermann模型
- *   yaw_rate = v * (tan(delta_left) + tan(delta_right)) / (2*L)
- * - 否则：使用单轨模型
- *   yaw_rate = v * tan(delta) / L
+ * 具体计算流程：
+ * 1. 判断运动方向（direction）
+ * 2. 查询转向映射表获取左右轮转角
+ * 3. 计算有效转向角：effective_delta = sign(direction)·steering_angle
+ * 4. 计算航向角速率：yaw_rate = v_signed·tan(effective_delta)/L
+ * 5. 更新航向角：heading = heading + yaw_rate·dt
+ * 6. 使用有符号速度更新位置
  */
-VehicleState_t motion_model_predict(const VehicleState_t *state,
-                                    double velocity,
-                                    double steering_angle,
+VehicleState_t motion_model_predict(SteeringModel_t *steering_config,
+                                    const VehicleState_t *state,
+                                    float velocity,
+                                    float steering_angle,
                                     double dt) {
     VehicleState_t new_state = *state;
     
-    /* 检查是否静止 */
-    if (fabs(velocity) < V_STATIC_THRESHOLD) {
-        /* 完全静止，只更新角度 */
+    /* === 关键修复：根据方向判断是否静止，而不仅基于速度 ===
+     * 原因：车辆可能在很低的速度下缓慢前进（如0.03 m/s），
+     * 此时不应该跳过积分，否则低速运动的距离会被丢失。
+     *
+     * 判断逻辑：
+     * - 如果方向是DIRECTION_STATIONARY，则完全静止
+     * - 否则，使用方向信息执行位置积分，即使速度很低
+     */
+
+    /* 获取已计算的方向（由上层localization_system计算） */
+    VehicleDirection_t direction = state->direction;
+
+    /* 边界情况：如果方向未计算，基于速度判断 */
+    if (direction == DIRECTION_INVALID) {
+        printf("direction invalid, derive from velocity\n");
+        direction = (fabs(velocity) < V_STATIC_THRESHOLD) ?
+                    DIRECTION_STATIONARY :
+                    ((velocity > 0.0) ? DIRECTION_FORWARD : DIRECTION_REVERSE);
+    }
+
+    /* 检查是否完全静止（基于方向，而不仅基于速度） */
+    if (direction == DIRECTION_STATIONARY) {
+        /* 完全静止，只保持位置和角度 */
         new_state.x = state->x;
         new_state.y = state->y;
-        new_state.theta = state->theta;
+        new_state.heading = state->heading;
         new_state.v = 0.0;
-        new_state.delta = steering_angle;
+        new_state.steering_angle = steering_angle;
         new_state.gear = state->gear;
         new_state.direction = DIRECTION_STATIONARY;
+        //printf("--stationary state\n");
         return new_state;
     }
     
-    /* === 改进：使用档位+速度组合判断方向 === */
-    VehicleDirection_t direction;
+    /* === 关键修复：即使速度很小，只要有运动方向或转向角，就应该更新heading ===
+     * 原因：Kalman滤波会基于观测到的转向角进行heading更新
+     * 如果motion_model_predict完全跳过更新，heading会与转向角矛盾
+     * 特别是在低速倒车或停车时，这非常重要
+     * 
+     * 即使velocity < V_STATIC_THRESHOLD，我们仍然应该更新heading
+     * 例如：倒车时转向角改变，即使速度很小，heading也应该变化
+     */
+    /* 关键：不再在这里检查velocity大小，而是允许所有非静止方向的情况继续处理 */
     
-    /* 如果有有效的档位信息，优先使用 */
-    if (state->gear != GEAR_INVALID && state->gear != GEAR_NEUTRAL && state->gear != GEAR_PARK) {
-        direction = derive_direction(state->gear, velocity);
-    } else {
-        /* 后备方案：仅基于速度信号（向后兼容） */
-        direction = (velocity > 0.0) ? DIRECTION_FORWARD : DIRECTION_REVERSE;
-    }
-    
-    /* 根据方向计算符号 */
-    int sign_v = (direction == DIRECTION_REVERSE) ? -1 : 1;
-    double abs_v = fabs(velocity);
-    
+    /* 根据已计算的方向获取符号（当前未在此函数中直接使用，但在雅可比矩阵中使用） */
+    int sign_v = get_sign_v_from_direction(direction);
+    (void)sign_v;  /* 标记为已知但未在此使用，避免编译警告 */
+
+    /* 🔴 关键修复：使用有符号速度而不是绝对值
+     * ISO 8855运动学方程是：
+     *   dx = v·cos(ψ)  where v can be positive(forward) or negative(reverse)
+     *   dy = v·sin(ψ)
+     *
+     * localization_system_process已确保：
+     *   v > 0 when direction == DIRECTION_FORWARD
+     *   v < 0 when direction == DIRECTION_REVERSE
+     *
+     * 这样可以自动处理后退时的方向反向：
+     * - 后退时v < 0，导致dx和dy反向，x坐标减少（正确！）
+     * - 转向角也在后退时反向(get_effective_steering_angle)
+     * - 从而产生直观的后退运动
+     */
+    double v_signed = velocity;  /* 使用有符号速度 */
+
     /* ========== 改进：查询转向映射表 ========== */
-    double left_wheel_angle = steering_angle;
-    double right_wheel_angle = steering_angle;
-    
-    if (steering_query_mapping(steering_angle, &left_wheel_angle, &right_wheel_angle) == 0) {
-        /* 映射表查询成功，已获得前左右轮转角 */
-        /* 注：实际转角已存储在steering_model的内部状态中 */
-    } else {
-        /* 映射表不可用，使用简单齿比转换 */
-        left_wheel_angle = steering_angle;
-        right_wheel_angle = steering_angle;
+    float left_wheel_angle = steering_angle;
+    float right_wheel_angle = steering_angle;
+    double yaw_rate = 0;
+    if (steering_config->steering_mapping.valid && steering_query_mapping(steering_config, steering_angle, &left_wheel_angle, &right_wheel_angle) == 0) {
+        //使用映射表查询车辆转角
+        /* 检查是否使用Ackermann模型 */
+        double left_delta_diff = fabs(left_wheel_angle - right_wheel_angle);
+        if (left_delta_diff > 0.001) {
+            /* Ackermann模型：考虑左右轮转角差异 */
+            /* yaw_rate = v * (tan(delta_left) + tan(delta_right)) / (2*L) */
+            /* 注意：v_signed的符号自动处理倒车方向，转向角使用原始值 */
+            double tan_left = tan(left_wheel_angle);
+            double tan_right = tan(right_wheel_angle);
+            yaw_rate = v_signed * (tan_left + tan_right) / (2.0 * steering_config->steering_config.wheelbase);
+        } else {
+            /* 单轨模型：左右轮转角相同 */
+            /* yaw_rate = v * tan(delta) / L */
+            double tan_delta = tan(right_wheel_angle);
+            yaw_rate = v_signed * tan_delta / steering_config->steering_config.wheelbase;
+        }
     }
-    
-    /* 转向角在后退时反向 */
-    double effective_left_delta = sign_v * left_wheel_angle;
-    double effective_right_delta = sign_v * right_wheel_angle;
-    
-    /* ========== 改进：使用Ackermann几何计算航向角速率 ========== */
-    double yaw_rate;
-    
-    /* 检查是否使用Ackermann模型 */
-    double left_delta_diff = fabs(left_wheel_angle - right_wheel_angle);
-    if (left_delta_diff > 0.001) {
-        /* Ackermann模型：考虑左右轮转角差异 */
-        /* yaw_rate = v * (tan(delta_left) + tan(delta_right)) / (2*L) */
-        double tan_left = tan(effective_left_delta);
-        double tan_right = tan(effective_right_delta);
-        yaw_rate = abs_v * (tan_left + tan_right) / (2.0 * WHEELBASE);
-    } else {
-        /* 单轨模型：左右轮转角相同 */
-        /* yaw_rate = v * tan(delta) / L */
-        double effective_delta = sign_v * steering_angle;
-        double tan_delta = tan(effective_delta);
-        yaw_rate = abs_v * tan_delta / WHEELBASE;
+    else {
+        //使用齿比计算车辆转角
+        double front_wheel_angle = steering_wheel_to_front_wheel(steering_config,steering_angle);
+        /* 使用原始转向角，v_signed的符号自动处理倒车方向 */
+        double tan_delta = tan(front_wheel_angle);
+        yaw_rate = v_signed * tan_delta / steering_config->steering_config.wheelbase;
     }
+    double heading_change = yaw_rate * dt;
+    double new_heading = state->heading + heading_change;
     
-    /* 位置更新 */
-    double mean_delta = (effective_left_delta + effective_right_delta) / 2.0;
-    double cos_term = cos(state->theta + mean_delta);
-    double sin_term = sin(state->theta + mean_delta);
+    /* === 🔴 关键修复：使用初始heading而不是更新后的heading ===
+     * 离散时间积分的正确做法：
+     *   - 使用时间步开始时的heading来计算位置变化
+     *   - 而不是步结束时的new_heading
+     * 原因：
+     *   1. 数值稳定性：避免heading变化累积
+     *   2. 物理一致性：位移应使用初始方向而非最终方向
+     *   3. 倒车时特别重要：错误的heading导致Y坐标错误累积
+     */
+    double cos_term = cos(state->heading);
+    double sin_term = sin(state->heading);
     
-    new_state.x = state->x + abs_v * cos_term * dt;
-    new_state.y = state->y + abs_v * sin_term * dt;
-    
+    /* 使用有符号速度进行位置更新
+     * 当v_signed为负(后退)时：
+     * - new_x = x + (-|v|) * cos(heading) * dt  即 x减少
+     * - new_y = y + (-|v|) * sin(heading) * dt  即y反向增长
+     * 这与后退运动的直观概念一致
+     */
+    new_state.x = state->x + v_signed * cos_term * dt;
+    new_state.y = state->y + v_signed * sin_term * dt;
     /* 航向角更新 */
-    new_state.theta = state->theta + yaw_rate * dt;
-    new_state.theta = normalize_angle(new_state.theta);
+    //new_state.heading = state->heading + yaw_rate * dt;
+    new_state.heading = normalize_angle(new_heading);
     
     new_state.v = velocity;
-    new_state.delta = steering_angle;
+    new_state.steering_angle = steering_angle;
     new_state.gear = state->gear;
     new_state.direction = direction;
     
@@ -152,48 +227,70 @@ void motion_model_jacobian(const VehicleState_t *state,
         }
     }
     
-    /* 如果速度太小，不更新位置 */
-    if (fabs(velocity) < V_STATIC_THRESHOLD) {
-        return;
+    /* === 关键修复：即使速度很小，也应该计算heading相关的偏导数 ===
+     * 原因：当velocity接近0但steering_angle改变时，
+     * yaw_rate = v*tan(delta)/L 仍然接近0，但heading应该略微变化
+     * 更重要的是：F[2][4]（heading关于steering_angle的偏导）在任何速度下都应该计算
+     * 
+     * 如果完全跳过雅可比矩阵计算，Kalman滤波的协方差会被错误地保持为单位矩阵
+     * 这会导致Kalman增益计算错误
+     */
+    /* 允许所有情况下计算雅可比矩阵，不再有velocity阈值检查 */
+
+    double theta = state->heading;
+    
+    /* === 优化：直接使用已计算的方向，避免重复计算 === */
+    /* 方向由上层 localization_system 在一处计算，这里直接使用 */
+    VehicleDirection_t direction = state->direction;
+
+    /* 如果方向未计算（边界情况），进行备选处理 */
+    if (direction == DIRECTION_INVALID) {
+        direction = (fabs(velocity) < V_STATIC_THRESHOLD) ?
+                    DIRECTION_STATIONARY :
+                    ((velocity > 0.0) ? DIRECTION_FORWARD : DIRECTION_REVERSE);
     }
     
-    double theta = state->theta;
+    int sign_v = get_sign_v_from_direction(direction);
     
-    /* === 改进：使用档位+速度组合判断方向 === */
-    VehicleDirection_t direction;
-    if (state->gear != GEAR_INVALID && state->gear != GEAR_NEUTRAL && state->gear != GEAR_PARK) {
-        direction = derive_direction(state->gear, velocity);
-    } else {
-        direction = (velocity > 0.0) ? DIRECTION_FORWARD : DIRECTION_REVERSE;
-    }
+    /* === 位置关于航向角的偏导 ===
+     * 根据ISO 8855运动学方程：
+     *   x = x_0 + v·cos(ψ)·dt
+     *   y = y_0 + v·sin(ψ)·dt
+     * 
+     * 偏导数（仅关于航向角θ，不涉及转向角δ）：
+     *   ∂x/∂θ = -v·sin(θ)·dt
+     *   ∂y/∂θ = v·cos(θ)·dt
+     */
+    double cos_theta = cos(theta);
+    double sin_theta = sin(theta);
     
-    int sign_v = (direction == DIRECTION_REVERSE) ? -1 : 1;
-    double abs_v = fabs(velocity);
-    double effective_delta = sign_v * steering_angle;
+    /* ∂x/∂θ = -v·sin(θ)·dt   （v可以是负数） */
+    F[0][2] = -velocity * sin_theta * dt;
+    /* ∂y/∂θ = v·cos(θ)·dt    （v可以是负数） */
+    F[1][2] = velocity * cos_theta * dt;
     
-    double cos_term = cos(theta + effective_delta);
-    double sin_term = sin(theta + effective_delta);
+    /* 位置关于速度的偏导 */
+    /* ∂x/∂v = cos(θ)·dt （velocity已包含符号信息，倒车时v<0自动处理） */
+    F[0][3] = cos_theta * dt;
+    /* ∂y/∂v = sin(θ)·dt （velocity已包含符号信息，倒车时v<0自动处理） */
+    F[1][3] = sin_theta * dt;
     
-    /* ∂x/∂θ */
-    F[0][2] = -abs_v * sin_term * dt;
-    /* ∂y/∂θ */
-    F[1][2] = abs_v * cos_term * dt;
-    
-    /* ∂x/∂v */
-    F[0][3] = sign_v * cos_term * dt;
-    /* ∂y/∂v */
-    F[1][3] = sign_v * sin_term * dt;
-    
-    /* ∂θ/∂v 和 ∂θ/∂δ */
-    double cos_delta = cos(effective_delta);
+    /* === 航向角关于控制量的偏导 ===
+     * 航向角速率方程：dψ/dt = (v/L)·tan(δ_eff)
+     * 其中：δ_eff = sign(direction)·δ（倒车时反向）
+     * 
+     * ∂ψ/∂v = tan(δ)/L
+     * ∂ψ/∂δ = v/(L·cos²(δ))
+     */
+    double cos_delta = cos(steering_angle);
     if (fabs(cos_delta) > 1e-6) {
-        double tan_delta = tan(effective_delta);
+        double tan_delta = tan(steering_angle);
         
-        /* ∂θ/∂v */
-        F[2][3] = sign_v * tan_delta / WHEELBASE * dt;
+        /* ∂θ/∂v = tan(δ)·dt/L   （velocity已包含符号） */
+        F[2][3] = tan_delta / WHEELBASE * dt;
         
-        /* ∂θ/∂δ */
-        F[2][4] = sign_v * abs_v / (WHEELBASE * cos_delta * cos_delta) * dt;
+        /* ∂θ/∂δ = v·dt/(L·cos²(δ))   （velocity已包含符号） */
+        F[2][4] = velocity / (WHEELBASE * cos_delta * cos_delta) * dt;
     }
 }
 
@@ -204,7 +301,8 @@ void motion_model_jacobian(const VehicleState_t *state,
  * 
  * 内部将float参数转换为double后调用原有的double版本函数
  */
-VehicleState_t motion_model_predict_float(const VehicleState_t *state,
+VehicleState_t motion_model_predict_float(SteeringModel_t *steering_config,
+                                          const VehicleState_t *state,
                                           float velocity,
                                           float steering_angle,
                                           float dt) {
@@ -214,7 +312,8 @@ VehicleState_t motion_model_predict_float(const VehicleState_t *state,
     }
     
     /* 转换float为double并调用原有函数 */
-    return motion_model_predict(state,
+    return motion_model_predict(steering_config,
+                               state,
                                (double)velocity,
                                (double)steering_angle,
                                (double)dt);

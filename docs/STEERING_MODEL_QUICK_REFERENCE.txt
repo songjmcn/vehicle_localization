@@ -1,0 +1,196 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║          STEERING MODEL 重构 - 快速参考 (Quick Reference)                 ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 1. INITIALIZATION (初始化)                                                  │
+└────────────────────────────────────────────────────────────────────────────┘
+
+  OLD (旧):
+    int steering_model_init(SteeringModelConfig_t *config);
+
+  NEW (新):
+    int steering_model_init(SteeringModelConfig_t *config);
+    
+  用法:
+    SteeringModelConfig_t config = { /* 初始化 */ };
+    steering_model_init(&config);
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 2. BASIC CONVERSION (基本转换)                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+
+  OLD (旧):
+    float angle = steering_wheel_to_front_wheel(0.5f);
+
+  NEW (新):
+    float angle = steering_wheel_to_front_wheel(&config, 0.5f);
+
+  工作原理:
+    • 方向盘 → 前轮: steering_wheel_to_front_wheel(&config, sw_angle)
+    • 前轮 → 方向盘: front_wheel_to_steering_wheel(&config, fw_angle)
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 3. YAW RATE CALCULATION (航向角速率)                                       │
+└────────────────────────────────────────────────────────────────────────────┘
+
+  OLD (旧):
+    float yaw = calculate_yaw_rate(5.0, 0.1);
+
+  NEW (新):
+    float yaw = calculate_yaw_rate(&config, 5.0, 0.1);
+
+  高级:
+    // Ackermann 模型
+    float yaw = steering_calculate_yaw_rate_ackermann(&config, v, sw_angle);
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 4. REAL-TIME UPDATE (实时更新)                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+
+  OLD (旧):
+    float filtered = steering_model_update(0.2, 1000);
+
+  NEW (新):
+    float filtered = steering_model_update(&config, 0.2, 1000);
+
+  查询状态:
+    float angle = steering_model_get_filtered_angle(&config);
+    float rate = steering_model_get_steering_rate(&config);
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 5. MAPPING TABLE (映射表) - 非线性特性                                     │
+└────────────────────────────────────────────────────────────────────────────┘
+
+  OLD (旧):
+    steering_mapping_init(sw_arr, left_arr, right_arr, count);
+    steering_query_mapping(angle, &left, &right);
+    steering_mapping_cleanup();
+
+  NEW (新):
+    steering_mapping_init(&config, sw_arr, left_arr, right_arr, count);
+    steering_query_mapping(&config, angle, &left, &right);
+    steering_mapping_cleanup(&config);
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 6. CALIBRATION & LIMITS (校准和限制)                                       │
+└────────────────────────────────────────────────────────────────────────────┘
+
+  OLD (旧):
+    float calibrated = steering_model_apply_calibration(angle);
+    float clamped = steering_model_clamp_angle(angle);
+
+  NEW (新):
+    float calibrated = steering_model_apply_calibration(&config, angle);
+    float clamped = steering_model_clamp_angle(&config, angle);
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 7. RESET & CLEANUP (重置和清理)                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+  OLD (旧):
+    steering_model_reset();
+
+  NEW (新):
+    steering_model_reset(&config);
+    steering_mapping_cleanup(&config);  // 映射表清理
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                        关键改进 (Key Improvements)                        ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+  ✅ 无全局变量              ← 多实例和线程安全
+  ✅ 显式参数传递            ← 代码更清晰
+  ✅ NULL 安全检查           ← 防守式编程
+  ✅ 单元测试友好            ← 配置可注入
+  ✅ 编译成功                ← 零错误
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                         完整 API 列表 (Full API)                          ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+核心函数 (Core):
+  ✓ steering_model_init(config)
+  ✓ steering_wheel_to_front_wheel(config, angle)
+  ✓ front_wheel_to_steering_wheel(config, angle)
+  ✓ calculate_yaw_rate(config, v, angle)
+  ✓ steering_model_update(config, angle, ts)
+
+查询函数 (Query):
+  ✓ steering_model_get_filtered_angle(config)
+  ✓ steering_model_get_steering_rate(config)
+  ✓ steering_get_wheel_angles(config, left, right, mean)
+
+校准函数 (Calibration):
+  ✓ steering_model_apply_calibration(config, angle)
+  ✓ steering_model_clamp_angle(config, angle)
+  ✓ steering_model_reset(config)
+
+映射表函数 (Mapping):
+  ✓ steering_mapping_init(config, sw, left, right, n)
+  ✓ steering_query_mapping(config, sw_angle, left, right)
+  ✓ steering_compute_mean_angle(config, sw_angle)
+  ✓ steering_calculate_yaw_rate_ackermann(config, v, sw_angle)
+  ✓ steering_mapping_cleanup(config)
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                         代码示例 (Examples)                              ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+Example 1: 多实例
+  ──────────────────────────────────────────────────────────
+  SteeringModelConfig_t main = { /* config */ };
+  SteeringModelConfig_t backup = { /* config */ };
+  
+  steering_model_init(&main);
+  steering_model_init(&backup);
+  
+  float a1 = steering_wheel_to_front_wheel(&main, 0.5);
+  float a2 = steering_wheel_to_front_wheel(&backup, 0.5);
+  // a1 != a2 (独立实例)
+
+Example 2: 线程安全
+  ──────────────────────────────────────────────────────────
+  // Thread 1:
+  SteeringModelConfig_t config1 = { /* ... */ };
+  steering_wheel_to_front_wheel(&config1, angle);
+  
+  // Thread 2:
+  SteeringModelConfig_t config2 = { /* ... */ };
+  steering_wheel_to_front_wheel(&config2, angle);
+  // 无竞态条件！
+
+Example 3: 单元测试
+  ──────────────────────────────────────────────────────────
+  void test_conversion(void) {
+      SteeringModelConfig_t cfg = { /* test config */ };
+      steering_model_init(&cfg);
+      
+      float result = steering_wheel_to_front_wheel(&cfg, 1.0);
+      assert(fabsf(result - 1.0/16.0) < 0.001);
+      
+      steering_mapping_cleanup(&cfg);
+  }
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                        迁移检查清单 (Migration)                           ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+  ☐ 为每个 steering_model 调用添加 &config 参数
+  ☐ 确保 config 已通过 steering_model_init() 初始化
+  ☐ 在清理时调用 steering_mapping_cleanup(&config)
+  ☐ 编译验证 (gcc -c src/steering_model.c)
+  ☐ 功能测试
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                        性能和内存 (Performance)                           ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+  性能影响:  ≈ 0 (参数传递开销可忽略)
+  内存节省:  每个函数调用栈增加 8 字节 (指针大小)
+  类型安全:  编译时检查，改进的安全性
+
+═══════════════════════════════════════════════════════════════════════════════
+最后更新: 2025-12-24
+版本: 1.0 (Production Ready)
+═══════════════════════════════════════════════════════════════════════════════

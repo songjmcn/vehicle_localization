@@ -28,7 +28,7 @@
 #define MAX_HISTORY_SIZE 100
 
 /* 速度阈值 */
-#define V_STATIC_THRESHOLD 0.1  /* 静止速度阈值 (m/s), 优化为float精度推荐值 */
+#define V_STATIC_THRESHOLD 0.01  /* 静止速度阈值 (m/s), 优化为float精度推荐值 */
 #define V_LOW_SPEED_THRESHOLD 1.5  /* 低速阈值 (m/s) */
 #define V_PARKING_MAX 2.0  /* 自动泊车最大速度 (m/s) */
 
@@ -44,7 +44,7 @@ typedef struct {
     double theta;  /**< 航向角 (rad) */
     double v;      /**< 速度 (m/s) */
     double delta;  /**< 转向角 (rad) */
-    uint32_t timestamp;  /**< 时间戳 (ms) */
+    uint64_t timestamp;  /**< 时间戳 (ms) */
     VehicleGear_t gear;  /**< 车辆档位 */
     VehicleDirection_t direction;  /**< 推导的运动方向 */
 } VehicleState_internal_t;
@@ -60,7 +60,7 @@ typedef struct {
     double gyro_x;    /**< x轴角速度 (rad/s) */
     double gyro_y;    /**< y轴角速度 (rad/s) */
     double gyro_z;    /**< z轴角速度 (rad/s) */
-    uint32_t timestamp;  /**< 时间戳 (ms) */
+    uint64_t timestamp;  /**< 时间戳 (ms) */
 } IMUData_internal_t;
 
 /**
@@ -70,7 +70,7 @@ typedef struct {
 typedef struct {
     double velocity;   /**< 速度 (m/s) */
     double distance;   /**< 积分距离 (m) */
-    uint32_t timestamp;  /**< 时间戳 (ms) */
+    uint64_t timestamp;  /**< 时间戳 (ms) */
 } WheelOdometryData_internal_t;
 
 /**
@@ -80,7 +80,7 @@ typedef struct {
 typedef struct {
     double steering_angle;  /**< 转向角 (rad) */
     double steering_rate;   /**< 转向角速率 (rad/s) */
-    uint32_t timestamp;  /**< 时间戳 (ms) */
+    uint64_t timestamp;  /**< 时间戳 (ms) */
 } SteeringData_internal_t;
 
 /**
@@ -92,7 +92,7 @@ typedef struct {
     double y;      /**< RTK y位置 (m) */
     double z;      /**< 高度 (m) */
     double heading;  /**< RTK航向角 (rad) */
-    uint32_t timestamp;  /**< 时间戳 (ms) */
+    uint64_t timestamp;  /**< 时间戳 (ms) */
     uint8_t quality;  /**< 定位质量 (0-5, 5最优) */
 } RTKData_internal_t;
 
@@ -133,7 +133,7 @@ typedef struct {
     IMUData_internal_t imu;
     WheelOdometryData_internal_t wheel_odometry;
     SteeringData_internal_t steering;
-    uint32_t timestamp;  /**< 融合时间戳 */
+    uint64_t timestamp;  /**< 融合时间戳 */
 } SensorReadings_internal_t;
 
 /**
@@ -147,7 +147,7 @@ typedef struct {
 typedef struct {
     double x_hat[5];        /**< 状态估计 [x, y, theta, v, delta] - 必须保留 Double */
     double P[5][5];         /**< 协方差矩阵 5x5 - **关键**：必须保留 Double */
-    uint32_t previous_timestamp;  /**< 上一时间戳 */
+    uint64_t previous_timestamp;  /**< 上一时间戳 */
 } FilterState_internal_t;
 
 /**

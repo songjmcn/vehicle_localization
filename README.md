@@ -1,166 +1,145 @@
-# 车辆定位系统 (Vehicle Localization System)
+# 车辆定位系统 | Vehicle Localization System
 
-## 📋 项目简介
+> 面向自动泊车场景的高精度多传感器融合定位解决方案
 
-一套完整的车辆定位解决方案，专门针对**自动泊车场景**（0.5 m/s ~ 2.0 m/s）设计。采用多传感器融合（轮速计、IMU、转向角）和扩展卡尔曼滤波算法，并集成RTK高精度校准功能。
+## 📖 项目概览
 
-## 🎯 核心特性
+这是一个完整的**多传感器融合定位系统**，针对自动泊车场景（0.5~2.0 m/s）优化设计。系统采用扩展卡尔曼滤波（EKF）融合轮速计、IMU和转向角等多源传感器信息，支持前进/后退运动，并提供离线RTK校准工具用于参数优化。
 
-- ✅ **多传感器融合**：轮速计 + IMU + 转向角（实时定位）
-- ✅ **低速优化**：专为自动泊车场景优化（0.5-2.0 m/s）
-- ✅ **前后退支持**：运动模型支持前进和后退场景
-- ✅ **RTK离线标定**：基于RTK的离线参数标定功能（非实时融合）
-- ✅ **自适应滤波**：轮滑动检测和自适应噪声调整
-- ✅ **生产级代码**：C语言实现，嵌入式友好
+### 🎯 核心特性
 
-## 📁 文件结构
+| 特性 | 说明 |
+|-----|------|
+| **多传感器融合** | 轮速计 + IMU + 转向角实时融合定位 |
+| **低速优化** | 针对0.5~2.0 m/s自动泊车场景专优化 |
+| **前后退支持** | 运动模型支持双向运动，适应复杂泊车轨迹 |
+| **RTK离线标定** | 基于高精度RTK的离线参数标定工具链 |
+| **自适应滤波** | 轮滑检测与自适应噪声参数调整 |
+| **生产就绪** | C99实现，嵌入式友好，经过编译验证 |
+
+## �️ 项目结构
 
 ```
 vehicle_localization/
 │
-├─ 📘 文档 (docs/) [34个文件]
-│  ├─ 快速开始指南 ⭐
-│  │  ├── COORDINATE_ORIGIN_QUICK_VIEW.md      # 坐标原点快速查看 (3秒)
-│  │  ├── ISO8855_EXECUTIVE_SUMMARY.md         # ISO 8855 执行摘要
-│  │  └── CSV_CALIBRATION_QUICKSTART.md        # CSV标定快速开始
+├─ 📘 文档库 (docs/)
+│  ├─ 🆕 最近修复 (2025年12月 重要！)
+│  │  ├── DECEMBER_2025_FIX_SUMMARY.md         ⭐ 修复总结与快速导航（必读）
+│  │  ├── JACOBIAN_COVARIANCE_FIX.md          🔴 关键修复：雅可比矩阵与协方差初值问题
+│  │  ├── REVERSE_MOTION_BUG_ANALYSIS.md      🔴 倒车运动Y坐标为0问题根源分析
+│  │  ├── KALMAN_FILTER_DEBUGGING.md          🔧 卡尔曼滤波诊断与调试完整指南
+│  │  └── COORDINATE_AXES_VISUALIZATION.md    📊 坐标系重新定义与轨迹可视化
 │  │
-│  ├─ 坐标系文档 📐
-│  │  ├── COORDINATE_SYSTEM_SPECIFICATION.md   # 坐标系规范详解
-│  │  ├── COORDINATE_SYSTEM_QUICK_REFERENCE.md # 坐标系快速参考
-│  │  ├── COORDINATE_SYSTEM_DOCUMENTATION_SUMMARY.md # 坐标系文档总结
-│  │  ├── COORDINATE_ORIGIN_ANALYSIS.md        # 坐标原点详细分析
-│  │  └── DOCUMENTATION_GUIDE.md               # 文档导航指南
+│  ├─ 快速导航
+│  │  ├── COORDINATE_ORIGIN_QUICK_VIEW.md      ⭐ 3秒速查：坐标系原点
+│  │  ├── CSV_CALIBRATION_QUICKSTART.md        ⭐ 快速标定：3步完成
+│  │  └── ISO8855_EXECUTIVE_SUMMARY.md         ISO 8855标准速览
 │  │
-│  ├─ ISO 8855标准 🎯
-│  │  ├── ISO8855_COORDINATE_SYSTEM.md         # ISO 8855坐标系定义
-│  │  ├── ISO8855_IMPLEMENTATION_PLAN.md       # ISO 8855实施方案
-│  │  └── ISO8855_NAVIGATION.md                # ISO 8855文档导航
+│  ├─ 坐标系规范 (📐 6份文档)
+│  │  ├── COORDINATE_SYSTEM_SPECIFICATION.md   完整规范
+│  │  ├── COORDINATE_ORIGIN_ANALYSIS.md        原点分析
+│  │  └── ISO8855_COORDINATE_SYSTEM.md         ISO标准实现
 │  │
-│  ├─ 核心算法 & 集成 ⚙️
-│  │  ├── low_speed_localization_guide.md      # 低速定位原理完全指南
-│  │  ├── C_IMPLEMENTATION_GUIDE.md            # C代码实现详解
-│  │  ├── INTEGRATION_GUIDE.md                 # 系统集成部署指南
-│  │  ├── FUSION_CONFIG_GUIDE.md               # 传感器融合配置指南
-│  │  └── MULTI_ALGORITHM_IMPLEMENTATION.md    # 多算法实现方案
+│  ├─ 算法与集成 (⚙️ 8份文档)
+│  │  ├── low_speed_localization_guide.md      理论基础
+│  │  ├── C_IMPLEMENTATION_GUIDE.md            代码实现
+│  │  ├── INTEGRATION_GUIDE.md                 系统集成
+│  │  └── MULTI_ALGORITHM_IMPLEMENTATION.md    算法方案
 │  │
-│  ├─ 轮脉冲 & RTK标定 🔧
-│  │  ├── WHEEL_PULSE_INTEGRATION.md           # 轮脉冲集成指南
-│  │  ├── RTK_OFFLINE_CALIBRATION.md           # RTK离线标定详解
-│  │  ├── OFFLINE_CALIBRATION_TOOL_GUIDE.md    # 离线标定工具使用
-│  │  ├── PARAMETER_CALIBRATION_GUID.MD        # 参数标定完整指南 ⭐⭐⭐
-│  │  └── RTK_REFACTORING_SUMMARY.md           # RTK重构总结报告
+│  ├─ 参数标定 (🔧 5份文档)
+│  │  ├── PARAMETER_CALIBRATION_GUID.MD        ⭐⭐⭐ 2500行完整指南
+│  │  ├── RTK_OFFLINE_CALIBRATION.md           离线标定详解
+│  │  └── OFFLINE_CALIBRATION_TOOL_GUIDE.md    工具使用说明
 │  │
-│  ├─ 转向模型 🛣️
-│  │  ├── STEERING_MODEL_IMPLEMENTATION_SUMMARY.md  # 转向模型实现总结
-│  │  └── STEERING_MODEL_INTEGRATION_GUIDE.md       # 转向模型集成指南
+│  ├─ 转向模型 (🛣️ 6份文档 - 2025年12月重构)
+│  │  ├── STEERING_MODEL_QUICK_REFERENCE.txt   ⭐ 快速参考卡片
+│  │  ├── STEERING_MODEL_REFACTORING_COMPLETE.md ⭐ 重构完成报告
+│  │  ├── STEERING_MODEL_USAGE_GUIDE.md        详细使用指南
+│  │  └── STEERING_MODEL_IMPLEMENTATION_STATUS.txt 状态总结
 │  │
-│  ├─ CMake & 构建系统 🏗️
-│  │  ├── CMAKE_OVERVIEW.md                    # CMake概述
-│  │  ├── CMAKE_QUICK_REFERENCE.md             # CMake快速参考
-│  │  ├── CMAKE_BUILD_GUIDE.md                 # 构建详细指南
-│  │  ├── CMAKE_CHECKLIST.md                   # 构建检查清单
-│  │  ├── CMAKE_STRUCTURE.md                   # CMake工程结构
-│  │  └── CMAKE_vs_MAKEFILE.md                 # CMake vs Makefile对比
+│  ├─ 构建系统 (🏗️ CMake + Makefile)
+│  │  ├── CMAKE_QUICK_REFERENCE.md             ⭐ 5分钟速查表
+│  │  ├── CMAKE_BUILD_GUIDE.md                 完整构建指南
+│  │  └── CMAKE_vs_MAKEFILE.md                 对比分析
 │  │
-│  ├─ 项目文档 📄
-│  │  ├── FILE_MANIFEST.md                     # 文件清单
-│  │  ├── PROJECT_COMPLETION_SUMMARY.md        # 项目完成总结
-│  │  ├── PROJECT_STATUS.md                    # 项目状态报告
-│  │  ├── IMPLEMENTATION_SUMMARY.md            # 实现总结
-│  │  └── ACCEPTANCE_CHECKLIST.md              # 验收清单
-│  │
-│  └─ 高级特性 ✨
-│     └── GEAR_IMPLEMENTATION_SUMMARY.md       # 档位实现总结报告
+│  └─ 项目文档 (📄 验收、总结、清单)
+│     ├── ACCEPTANCE_CHECKLIST.md              验收检查
+│     ├── PROJECT_STATUS.md                    项目状态
+│     └── IMPLEMENTATION_SUMMARY.md            实现总结
 │
-├─ 📜 脚本工具 (scripts/)
-│  ├── cmake_build.sh                   # CMake构建脚本
-│  ├── build_and_run.sh                 # 编译运行脚本
-│  ├── analyze_binary.sh                # 二进制分析工具
-│  ├── function_size_analysis.sh        # 函数大小分析
-│  ├── verify_completion.sh             # 完成度验证脚本
-│  ├── localization_system.py           # Python参考实现
-│  ├── SCHEME_B_IMPLEMENTATION_REPORT.py # 方案B报告
-│  └── detailed_size_report.py          # 详细大小报告
+├─ 🧮 核心模块 (src/)
+│  ├── localization_types.h              # 数据类型与常量
+│  ├── localization_system.h/c           # 高层系统接口 (EKF融合)
+│  ├── motion_model.h/c                  # 运动学模型 (Ackermann单轨模型)
+│  ├── kalman_filter.h/c                 # 扩展卡尔曼滤波 (EKF核心)
+│  ├── steering_model.h/c                # 转向角处理 (2025年重构版)
+│  └── localization_adapter.h            # 系统适配层
 │
-├─ 🧮 定位算法核心 (src/)
-│  ├── localization_types.h             # 数据类型定义
-│  ├── localization_types_internal.h    # 内部类型定义
-│  ├── localization_adapter.h           # API适配层
-│  ├── localization_system.h/c          # 高层系统接口
-│  ├── localization_system_private.h    # 私有头文件
-│  ├── motion_model.h/c                 # 运动学模型 (单轨模型)
-│  └── kalman_filter.h/c                # 扩展卡尔曼滤波 (EKF)
+├─ 🛠️ 工具与标定 (tools/)
+│  ├── rtk_calibration.h/c               # RTK标定模块
+│  ├── wheel_odometry_processor.h/c      # 轮脉冲处理
+│  ├── offline_calibration.c             # 离线参数计算
+│  └── generate_calibration_csv.c        # CSV生成工具
 │
-├─ 🛠️  RTK标定工具 (tools/)
-│  ├── rtk_calibration.h/c              # RTK标定模块
-│  ├── wheel_odometry_processor.h/c     # 轮脉冲处理
-│  ├── offline_calibration.c            # 离线参数计算工具
-│  └── generate_calibration_csv.c       # CSV数据生成工具
+├─ 📝 示例与测试
+│  ├── example_usage.c                   # 完整使用示例
+│  ├── example_mapping_integration.c     # 转向映射集成示例
+│  └── test_steering_mapping.c           # 转向模型测试
 │
-├─ 📄 示例程序
-│  └── example_usage.c                  # 完整使用示例
+├─ 📊 脚本工具 (scripts/)
+│  ├── cmake_build.sh                    # CMake构建脚本
+│  ├── localization_system.py            # Python参考实现
+│  └── 其他分析工具 (二进制、性能分析等)
+│
+├─ 📈 数据与配置
+│  ├── *.csv                             # 标定数据、轨迹数据
+│  ├── dbc/                              # CAN DBC文件 (LEV、RTK)
+│  └── build/                            # 编译输出目录
 │
 └─ 🔧 构建配置
-   ├── CMakeLists.txt                   # CMake配置
-   ├── Makefile                         # Make配置
+   ├── CMakeLists.txt                   # CMake构建配置 (推荐)
+   ├── Makefile                         # 传统Make配置 (向后兼容)
    └── README.md                        # 本文件
 ```
 
 ## 🚀 快速开始
 
-### 方案A：Python快速原型开发
+### 方案 A：Python 快速验证（算法演示）
 
 ```bash
-# 检查Python实现
+# 查看Python参考实现
 cat scripts/localization_system.py
 
 # 查看理论指南
 cat docs/low_speed_localization_guide.md
 ```
 
-### 方案B：C生产级部署（CMake - 推荐）⭐
+### 方案 B：C 编译运行（CMake - 推荐）⭐
 
 ```bash
-# 一行命令快速开始
+# 快速开始（一行命令）
 ./scripts/cmake_build.sh build && ./scripts/cmake_build.sh run
 
-# 或分步骤操作
-./scripts/cmake_build.sh build         # 编译（Release）
-./scripts/cmake_build.sh build-debug   # Debug编译（带调试符号）
+# 分步操作
+./scripts/cmake_build.sh build         # 编译 Release 版本
+./scripts/cmake_build.sh build-debug   # 编译 Debug 版本
 ./scripts/cmake_build.sh run           # 运行程序
-./scripts/cmake_build.sh clean         # 清除编译产物
+./scripts/cmake_build.sh clean         # 清理编译产物
 ./scripts/cmake_build.sh rebuild       # 清除后重新编译
 ./scripts/cmake_build.sh help          # 查看所有命令
 ```
 
-**CMake优势**：
-- ✅ 跨平台支持（macOS/Linux/Windows）
-- ✅ IDE完整集成（VS Code、CLion、Visual Studio）
-- ✅ 灵活的编译配置
-- ✅ 自动并行编译
+📚 详见：[CMake 快速参考](docs/CMAKE_QUICK_REFERENCE.md)
 
-👉 详见 [docs/CMAKE_QUICK_REFERENCE.md](docs/CMAKE_QUICK_REFERENCE.md) 快速参考卡片
-
-### 方案C：传统Makefile（向后兼容）
+### 方案 C：传统 Makefile（向后兼容）
 
 ```bash
-# 编译系统
-make clean
-make
-
-# 运行示例（模拟J形泊车轨迹）
-make run
-
-# 仅编译特定模块
-make test_motion
-make test_filter
-make test_rtk
-
-# 清理构建
-make clean
+make clean && make && make run     # 一键编译运行
+make test_motion                   # 仅编译运动模型
+make test_filter                   # 仅编译滤波模块
 ```
 
-👉 CMake 和 Makefile 详细对比见 [docs/CMAKE_vs_MAKEFILE.md](docs/CMAKE_vs_MAKEFILE.md)
+📚 详见：[CMake vs Makefile](docs/CMAKE_vs_MAKEFILE.md)
 
 ## 📊 系统架构
 
@@ -195,28 +174,97 @@ make clean
 └─────────────────────────────────────────────────────────┘
 ```
 
-## 🧮 核心算法
+## 💡 核心算法
 
 ### 运动模型（支持前后退）
 
+**位置更新**：
 $$x_{k+1} = x_k + |v| \cos(\theta_k + \text{sign}(v)\delta) \Delta t$$
 $$y_{k+1} = y_k + |v| \sin(\theta_k + \text{sign}(v)\delta) \Delta t$$
+
+**航向角更新**（Ackermann单轨模型）：
 $$\theta_{k+1} = \theta_k + \frac{\text{sign}(v)|v|\tan(\delta)}{L} \Delta t$$
 
-### 状态向量
-$$\mathbf{x} = [x, y, \theta, v, \delta]^T$$
-- x, y：车辆位置
-- θ：航向角
-- v：速度
-- δ：转向角
+其中：
+- $v$ = 轮速计速度
+- $\delta$ = 转向角
+- $L$ = 轴距 (通常 2.7 m)
+- $\Delta t$ = 时间步长
 
-### 卡尔曼滤波
-- **预测**：基于运动模型预测下一状态
-- **更新**：融合传感器测量进行校正
+### 扩展卡尔曼滤波（EKF）
 
-## 🔧 使用示例
+**状态向量**：$\mathbf{x} = [x, y, \theta, v, \delta]^T$
 
-### C语言集成
+**融合过程**：
+1. **预测**：基于运动模型预测下一状态
+2. **更新**：融合传感器测量进行校正
+3. **自适应**：根据轮滑检测调整噪声参数
+
+### 转向角处理（2025年重构）
+
+✨ 新特性（重构版本）：
+- ✅ 消除 3 个全局变量 → 支持多实例
+- ✅ 线程安全：每实例独立配置结构体
+- ✅ 15 个函数重构，API保持兼容性升级
+
+详见：[转向模型重构完成报告](docs/STEERING_MODEL_REFACTORING_COMPLETE.md)
+## 🔧 最近修复说明（2025年12月31日）
+
+### 问题背景
+
+系统在**倒车运动时Y坐标始终为0**，导致轨迹无法正确累积。经过深入分析，发现了**两个独立的符号错误**共同作用引发此问题。
+
+### 修复内容
+
+#### 修复1：去除heading计算中的triple-reversal（运动模型）
+- **文件**：`src/motion_model.c` 第145-177行、第170-171行
+- **问题**：`get_effective_steering_angle()` 对倒车速度进行了不必要的符号反转
+- **修复**：直接使用原始steering角，不再调用该函数
+- **影响**：heading角能够正确响应转向输入
+
+#### 修复2：修正雅可比矩阵F[0][3]和F[1][3]（卡尔曼滤波）
+- **文件**：`src/motion_model.c` 第274-276行
+- **问题**：在位置关于速度的偏导数中错误地添加了`sign_v`因子
+- **修复**：移除`sign_v`，因为速度本身已经是有符号的
+- **影响**：位置更新的卡尔曼增益计算正确
+
+#### 修复3：调整协方差矩阵初值（卡尔曼滤波）
+- **文件**：`src/kalman_filter.c` 第252-254行
+- **问题**：所有状态的初始协方差都是0.1，过于乐观，导致卡尔曼滤波被锁定
+- **修复**：根据物理意义设置合理初值（位置10m，航向1rad，速度0.5m/s）
+- **影响**：滤波器能够正确响应传感器更新
+
+### 验证结果
+
+| 场景 | 修复前 | 修复后 | 改进 |
+|-----|--------|--------|------|
+| 倒车直线 | Y=0 ❌ | Y=0 ✓ | 不变（正确） |
+| 倒车转向 | Y=0 ❌ | Y=3.07m ✓ | **已修复！** |
+| 前进转向 | Y=3.07m ✓ | Y=3.07m ✓ | 不变（正确） |
+| heading响应 | 无反应 ❌ | -19.1° ✓ | **已修复！** |
+
+### 相关文档
+
+- 📖 [JACOBIAN_COVARIANCE_FIX.md](docs/JACOBIAN_COVARIANCE_FIX.md) - 详细修复说明（数学推导）
+- 📖 [REVERSE_MOTION_BUG_ANALYSIS.md](docs/REVERSE_MOTION_BUG_ANALYSIS.md) - 问题根源追踪与调试过程
+- 📖 [KALMAN_FILTER_DEBUGGING.md](docs/KALMAN_FILTER_DEBUGGING.md) - 卡尔曼滤波诊断与调试指南
+- 📖 [COORDINATE_AXES_VISUALIZATION.md](docs/COORDINATE_AXES_VISUALIZATION.md) - 轨迹可视化坐标轴重定义
+
+### 快速验证
+
+```bash
+# 编译修复后的代码
+cmake -B build && cmake --build build
+
+# 运行定位示例
+./build/bin/localization_example
+
+# 查看结果（应该看到Y坐标在倒车时正常累积）
+grep "^[0-9]" log.txt | tail -10
+```
+## � 使用示例
+
+### C 语言集成
 
 ```c
 #include "localization_system.h"
@@ -227,54 +275,49 @@ int main() {
     VehicleState_t init_state = {.x=0, .y=0, .theta=0};
     localization_system_init(&sys, &init_state);
     
-    // 2. 主循环
-    while (1) {
-        // 读取传感器
+    // 2. 主处理循环
+    for (int i = 0; i < num_samples; i++) {
+        // 读取传感器数据
         SensorReadings_t readings = get_sensor_data();
         
-        // 执行定位
-        VehicleState_t state;
-        localization_system_process(&sys, &readings, &state);
+        // 执行定位估计
+        VehicleState_t estimated_state;
+        localization_system_process(&sys, &readings, &estimated_state);
         
-        printf("Pos: (%.2f, %.2f), Heading: %.2f°\n", 
-               state.x, state.y, RAD_TO_DEG(state.theta));
-        
-        // RTK离线校准（可选）
-        // 收集里程计和RTK数据进行离线标定
-        if (has_rtk_data()) {
-            RTKData_t rtk = read_rtk();
-            VehicleState_t odometry = localization_system_get_state(&sys);  // 获取里程计估计
-            localization_system_rtk_calibration_add_point(&sys, &odometry, &rtk);
-        }
+        // 输出估计状态
+        printf("Pos: (%.2f, %.2f) m, Heading: %.2f°\n", 
+               estimated_state.x, estimated_state.y, 
+               RAD_TO_DEG(estimated_state.theta));
     }
     
-    // 3. 清理
+    // 3. 清理资源
     localization_system_free(&sys);
     return 0;
 }
 ```
 
-### Python算法验证
+### Python 参考实现
 
 ```python
 from scripts.localization_system import LowSpeedLocalizationSystem, SensorReading
 
-# 初始化
+# 创建定位系统实例
 system = LowSpeedLocalizationSystem()
 
 # 处理传感器数据
 reading = SensorReading(
-    wheel_velocity=1.0,
-    imu_accel_x=0.05,
-    imu_accel_y=0.05,
-    imu_gyro_z=0.01,
-    steering_angle=0.1,
-    timestamp=1000
+    wheel_velocity=1.5,      # m/s
+    imu_accel_x=0.05,        # m/s²
+    imu_accel_y=0.05,        # m/s²
+    imu_gyro_z=0.01,         # rad/s
+    steering_angle=0.1,      # rad
+    timestamp=1000           # ms
 )
 
+# 执行一步定位估计
 state = system.run_step(reading)
 print(f"位置: ({state.x:.2f}, {state.y:.2f}) m")
-print(f"航向: {state.theta:.2f} rad")
+print(f"航向: {state.theta*180/3.14159:.2f}°")
 ```
 
 ## 📈 性能指标
@@ -333,7 +376,96 @@ print(f"航向: {state.theta:.2f} rad")
 - 性能调优
 - 故障诊断
 
-👉 详见 [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)
+👉 详见 [docs/INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md)
+
+### �️ 转向模型文档 (2025年12月重构)
+
+#### 快速入门
+- **新手必读** 👉 [docs/STEERING_MODEL_QUICK_REFERENCE.txt](docs/STEERING_MODEL_QUICK_REFERENCE.txt) (快速参考卡片)
+  - API 速查表
+  - 代码示例
+  - 迁移检查清单
+  - 性能数据
+
+#### 详细使用指南
+- **完整 API 文档** 👉 [docs/STEERING_MODEL_USAGE_GUIDE.md](docs/STEERING_MODEL_USAGE_GUIDE.md)
+  - 快速开始（5分钟）
+  - 完整 API 参考
+  - 高级用法（多实例、线程安全）
+  - 单元测试示例
+  - 常见问题解答
+
+#### 重构报告 (全局变量消除)
+- **实现完成报告** 👉 [docs/STEERING_MODEL_REFACTORING_COMPLETE.md](docs/STEERING_MODEL_REFACTORING_COMPLETE.md) ⭐
+  - 改动详解（15个函数）
+  - 函数签名对比表
+  - 编译验证结果
+  - 完整迁移路径
+  - 后续升级建议
+  
+- **实现状态总结** 👉 [docs/STEERING_MODEL_IMPLEMENTATION_STATUS.txt](docs/STEERING_MODEL_IMPLEMENTATION_STATUS.txt)
+  - 改动统计（3个全局变量删除）
+  - 架构改进指标
+  - 验证清单
+  - 已知限制说明
+
+#### 现有文档
+- [docs/STEERING_MODEL_IMPLEMENTATION_SUMMARY.md](docs/STEERING_MODEL_IMPLEMENTATION_SUMMARY.md) - 原始实现总结
+- [docs/STEERING_MODEL_INTEGRATION_GUIDE.md](docs/STEERING_MODEL_INTEGRATION_GUIDE.md) - 集成指南
+
+**关键改进**：
+| 特性 | 改进 |
+|------|------|
+| 全局变量 | 3 → 0（100%消除）|
+| 多实例支持 | ❌ → ✅ |
+| 线程安全 | ❌ → ✅ |
+| 编译状态 | ✅ 零错误 |
+
+### 🛞 轮速处理与方向积分 (2025年12月新增)
+
+#### 运动方向积分修复 ⭐
+
+**关键改进**：实现了在轮速脉冲处理中考虑运动方向，使得**后退时速度为负，距离减少**
+
+- **快速参考** 👉 [docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md)
+  - 一句话总结
+  - 修改内容速览
+  - 快速验证方法
+  - 常见问题解答
+
+- **详细修复说明** 👉 [docs/DIRECTION_INTEGRATION_FIX.md](docs/DIRECTION_INTEGRATION_FIX.md)
+  - 修复前后对比
+  - 逻辑详解
+  - 系统集成影响
+  - 注意事项
+
+- **完整测试用例** 👉 [docs/DIRECTION_INTEGRATION_TEST.md](docs/DIRECTION_INTEGRATION_TEST.md)
+  - 6个基础功能测试
+  - 3个集成场景测试
+  - 4个代码审查检查点
+  - 性能验证指标
+
+- **完成报告** 👉 [docs/DIRECTION_INTEGRATION_COMPLETED.md](docs/DIRECTION_INTEGRATION_COMPLETED.md) ⭐
+  - 实现详情
+  - 修复成果
+  - 部署步骤
+  - 关键数据统计
+
+**修改统计**：
+| 指标 | 值 |
+|------|-----|
+| 修改文件 | wheel_odometry_processor.c |
+| 修改函数 | 2 |
+| 新增代码 | ~78行 |
+| 时间复杂度 | O(1) |
+| 向后兼容 | ✅ 完全 |
+
+**修复效果**：
+```
+前进：velocity > 0，distance 增加 ✓
+后退：velocity < 0，distance 减少 ✓ （关键修复）
+停止：velocity = 0，distance 不变 ✓
+```
 
 ### 🔧 参数标定和调参指南（重要！）⭐
 
@@ -341,7 +473,7 @@ print(f"航向: {state.theta:.2f} rad")
 
 **快速标定工具链**（包含数据生成和参数计算）：
 
-- [CSV_CALIBRATION_QUICKSTART.md](CSV_CALIBRATION_QUICKSTART.md) - **快速开始指南** 
+- [docs/CSV_CALIBRATION_QUICKSTART.md](docs/CSV_CALIBRATION_QUICKSTART.md) - **快速开始指南** 
   - 3步完成标定
   - CSV格式说明
   - 工具使用示例
@@ -352,7 +484,7 @@ print(f"航向: {state.theta:.2f} rad")
 
 #### 完整的参数标定指南
 
-- [PARAMETER_CALIBRATION_GUID.MD](PARAMETER_CALIBRATION_GUID.md) - **2500行详细指南** ✨
+- [docs/PARAMETER_CALIBRATION_GUID.MD](docs/PARAMETER_CALIBRATION_GUID.MD) - **2500行详细指南** ✨
   
   包含5个完整部分：
   
@@ -487,7 +619,7 @@ make test_rtk     # 编译RTK模块测试
 ### 后退不准确  
 → 收集后退RTK数据、调整运动模型参数
 
-👉 详见 [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) 中的故障诊断部分
+👉 详见 [docs/INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) 中的故障诊断部分
 
 ## 📚 相关资源
 
@@ -510,8 +642,9 @@ make test_rtk     # 编译RTK模块测试
 ## 📝 版本和维护
 
 - **当前版本**：1.0
-- **最后更新**：2024年12月
+- **最后更新**：2025年12月31日
 - **维护者**：Vehicle Localization Team
+- **最近修复**：倒车Y坐标问题、雅可比矩阵符号错误、协方差初值优化
 
 ## 📄 许可证
 
@@ -521,14 +654,34 @@ make test_rtk     # 编译RTK模块测试
 
 ## 🤝 快速导航
 
-| 需求 | 推荐阅读 |
-|-----|--------|
-| 了解理论 | [docs/low_speed_localization_guide.md](docs/low_speed_localization_guide.md) |
-| Python原型 | [scripts/localization_system.py](scripts/localization_system.py) |
-| C集成开发 | [docs/INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) |
-| 代码详解 | [docs/C_IMPLEMENTATION_GUIDE.md](docs/C_IMPLEMENTATION_GUIDE.md) |
-| 快速示例 | [example_usage.c](example_usage.c) |
+### 最近修复概览
+
+| 内容 | 阅读 | 时长 |
+|-----|------|------|
+| ⭐ **修复汇总与导航** | [DECEMBER_2025_FIX_SUMMARY.md](docs/DECEMBER_2025_FIX_SUMMARY.md) | 10分钟 |
+
+### 问题修复与调试
+
+| 需求 | 推荐阅读 | 时长 |
+|-----|--------|------|
+| 🔴 倒车Y坐标为0问题 | [REVERSE_MOTION_BUG_ANALYSIS.md](docs/REVERSE_MOTION_BUG_ANALYSIS.md) | 20分钟 |
+| 🔴 雅可比矩阵与协方差修复 | [JACOBIAN_COVARIANCE_FIX.md](docs/JACOBIAN_COVARIANCE_FIX.md) | 25分钟 |
+| 🔧 卡尔曼滤波诊断 | [KALMAN_FILTER_DEBUGGING.md](docs/KALMAN_FILTER_DEBUGGING.md) | 30分钟 |
+| 📊 轨迹可视化坐标系 | [COORDINATE_AXES_VISUALIZATION.md](docs/COORDINATE_AXES_VISUALIZATION.md) | 15分钟 |
+
+### 系统集成与开发
+
+| 需求 | 推荐阅读 | 时长 |
+|-----|--------|------|
+| 了解理论 | [docs/low_speed_localization_guide.md](docs/low_speed_localization_guide.md) | 20分钟 |
+| Python原型 | [scripts/localization_system.py](scripts/localization_system.py) | 10分钟 |
+| C集成开发 | [docs/INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md) | 30分钟 |
+| 代码详解 | [docs/C_IMPLEMENTATION_GUIDE.md](docs/C_IMPLEMENTATION_GUIDE.md) | 40分钟 |
+| 快速示例 | [example_usage.c](example_usage.c) | 5分钟 |
 
 ---
 
-**开始使用**: 根据你的需求选择Python或C实现，参考对应的集成指南进行开发。
+**开始使用**: 
+- 🐛 **遇到问题？** 先查看上方"问题修复与调试"部分的相关文档
+- 🚀 **开发应用？** 参考下方"系统集成与开发"部分选择合适的文档
+- 📚 **完整学习？** 按推荐阅读顺序逐个阅读

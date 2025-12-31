@@ -3,12 +3,12 @@ CFLAGS = -Wall -Wextra -O2 -std=c99 -lm -Isrc -Itools
 LDFLAGS = -lm
 
 # 源文件
-SOURCES = src/motion_model.c src/kalman_filter.c tools/rtk_calibration.c src/localization_system.c tools/wheel_odometry_processor.c example_usage.c
+SOURCES = src/motion_model.c src/kalman_filter.c src/steering_model.c src/wheel_odometry_processor.c tools/rtk_calibration.c src/localization_system.c example_usage.c
 OBJECTS = $(SOURCES:.c=.o)
 TARGET = localization_example
 
 # 头文件
-HEADERS = src/localization_types.h src/motion_model.h src/kalman_filter.h tools/rtk_calibration.h src/localization_system.h tools/wheel_odometry_processor.h
+HEADERS = src/localization_types.h src/motion_model.h src/kalman_filter.h src/steering_model.h src/wheel_odometry_processor.h tools/rtk_calibration.h src/localization_system.h
 
 # 编译目标
 all: $(TARGET)

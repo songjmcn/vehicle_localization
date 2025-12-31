@@ -10,6 +10,7 @@
 #include "kalman_filter.h"
 #include "rtk_calibration.h"
 #include "wheel_odometry_processor.h"
+#include "motion_model.h"
 
 /**
  * @brief 定位系统上下文
@@ -21,11 +22,10 @@ typedef struct {
     DiagnosticsInfo_t diagnostics;
     WheelOdometryProcessor_t wheel_processor;  /**< 轮速脉冲处理器 */
     WheelConfig_t wheel_config;                 /**< 轮速计配置 */
-    
+    SteeringModel_t heading_processer;     /**< 转向模型配置 */
     /* 系统状态 */
     bool is_initialized;
-    uint32_t operation_timestamp;
-    VehicleGear_t current_gear;                 /**< 当前档位 */
+    uint64_t operation_timestamp;
 } LocalizationSystem_t;
 
 /**
@@ -33,16 +33,66 @@ typedef struct {
  * @param sys 系统指针
  * @param initial_state 初始状态（NULL时为原点）
  * @return 0成功，-1失败
+ * 
+ * @note 自动使用 FUSION_MODE_BASIC（向后兼容）
  */
 int localization_system_init(LocalizationSystem_t *sys,
                             const VehicleState_t *initial_state);
 
 /**
- * @brief 执行一个完整的定位步骤（预测+更新）
+ * @brief 初始化定位系统并指定融合模式
  * @param sys 系统指针
- * @param sensor_data 传感器数据
+ * @param initial_state 初始状态（NULL时为原点）
+ * @param fusion_mode 融合模式 (FUSION_MODE_BASIC 或 FUSION_MODE_IMU_STEERING)
+ * @return 0成功，-1失败
+ * 
+ * @example
+ *   localization_system_init_with_fusion(&sys, NULL, FUSION_MODE_IMU_STEERING);
+ */
+int localization_system_init_with_fusion(LocalizationSystem_t *sys,
+                                        const VehicleState_t *initial_state,
+                                        FusionMode_t fusion_mode);
+
+/**
+ * @brief 运行时切换融合模式
+ * @param sys 系统指针
+ * @param fusion_mode 新的融合模式
+ * @return 0成功，-1失败
+ * 
+ * @note 不重置卡尔曼滤波器状态，平滑切换
+ */
+int localization_system_switch_fusion(LocalizationSystem_t *sys,
+                                     FusionMode_t fusion_mode);
+
+/**
+ * @brief 执行一个完整的定位步骤（预测+更新）
+ * 
+ * 此函数集成了轮速脉冲处理和定位计算。如果 sensor_data 包含脉冲数据，
+ * 会自动调用脉冲处理器；否则直接使用 wheel_odometry 中的速度值。
+ * 
+ * @param sys 系统指针
+ * @param sensor_data 传感器数据结构
+ *        - 必须包含有效的 gear 字段
+ *        - 可选包含 wheel_pulse_count 和轮状态（如果 has_wheel_pulse=true）
+ *        - 或直接包含 wheel_odometry.velocity（速度模式）
  * @param estimated_state 输出的估计状态
  * @return 0成功，-1失败
+ * 
+ * @note sensor_data->gear 必须由调用者填充，用于方向推导
+ * @note 脉冲处理已在本函数中自动集成，无需单独调用
+ * 
+ * @example
+ *   // 脉冲模式
+ *   sensor_data.has_wheel_pulse = true;
+ *   sensor_data.wheel_pulse_count = pulse_count;
+ *   sensor_data.rear_left_wheel_state = WHEEL_DIRECTION_FORWARD;
+ *   sensor_data.rear_right_wheel_state = WHEEL_DIRECTION_FORWARD;
+ *   
+ *   // 速度模式
+ *   sensor_data.has_wheel_pulse = false;
+ *   sensor_data.wheel_odometry.velocity = speed_value;
+ *   sensor_data.rear_left_wheel_state = WHEEL_DIRECTION_FORWARD;
+ *   sensor_data.rear_right_wheel_state = WHEEL_DIRECTION_FORWARD;
  */
 int localization_system_process(LocalizationSystem_t *sys,
                                const SensorReadings_t *sensor_data,
@@ -152,7 +202,7 @@ int localization_system_set_wheel_config(LocalizationSystem_t *sys,
                                         const WheelConfig_t *config);
 
 /**
- * @brief 更新轮速脉冲数据
+ * @brief 更新轮速脉冲数据（已整合到 localization_system_process）
  * 
  * 用于硬件提供脉冲计数时调用。系统会自动：
  *   1. 计算脉冲增量
@@ -164,17 +214,24 @@ int localization_system_set_wheel_config(LocalizationSystem_t *sys,
  * @param sys 系统指针
  * @param pulse_count 脉冲计数（累计值）
  * @param timestamp 时间戳 (ms)
+ * @param gear 当前档位
+ * @param rear_left_state 左后轮运动状态
+ * @param rear_right_state 右后轮运动状态
  * @return 0成功，-1失败
  * 
  * @note 需要在 localization_system_set_wheel_config() 后调用
  * @note 推荐调用频率 50Hz 以上
+ * @deprecated 建议通过 SensorReadings_t.has_wheel_pulse 在 localization_system_process 中使用
  */
 int localization_system_update_wheel_pulse(LocalizationSystem_t *sys,
                                           uint32_t pulse_count,
-                                          uint32_t timestamp);
+                                          uint64_t timestamp,
+                                          VehicleGear_t gear,
+                                          WheelDirection_t rear_left_state,
+                                          WheelDirection_t rear_right_state);
 
 /**
- * @brief 更新轮速速度值
+ * @brief 更新轮速速度值（已整合到 localization_system_process）
  * 
  * 用于硬件已提供速度值时调用。系统会：
  *   1. 应用低速平滑
@@ -185,19 +242,26 @@ int localization_system_update_wheel_pulse(LocalizationSystem_t *sys,
  * @param sys 系统指针
  * @param velocity 速度 (m/s)
  * @param timestamp 时间戳 (ms)
+ * @param gear 当前档位
+ * @param rear_left_state 左后轮运动状态
+ * @param rear_right_state 右后轮运动状态
  * @return 0成功，-1失败
  * 
  * @note 当硬件已转换脉冲→速度时使用此接口
  * @note 推荐调用频率 50Hz 以上
+ * @deprecated 建议通过 SensorReadings_t.has_wheel_pulse 在 localization_system_process 中使用
  */
 int localization_system_update_wheel_velocity(LocalizationSystem_t *sys,
                                              double velocity,
-                                             uint32_t timestamp);
+                                             uint64_t timestamp,
+                                             VehicleGear_t gear,
+                                             WheelDirection_t rear_left_state,
+                                             WheelDirection_t rear_right_state);
 
 /**
  * @brief 获取最新的轮速数据
  * @param sys 系统指针
- * @param odometry 输出的轮速数据
+ * @param odometry 输出的轮速数据（包括左右轮方向）
  * @return 0成功，-1失败
  */
 int localization_system_get_wheel_odometry(const LocalizationSystem_t *sys,
@@ -216,13 +280,5 @@ bool localization_system_wheel_is_timeout(const LocalizationSystem_t *sys);
  * @return 0成功，-1失败
  */
 int localization_system_reset_wheel_processor(LocalizationSystem_t *sys);
-
-/**
- * @brief 更新系统的当前档位
- * @param sys 系统指针
- * @param gear 车辆档位
- * @return 0成功，-1失败
- */
-int localization_system_set_gear(LocalizationSystem_t *sys, VehicleGear_t gear);
 
 #endif /* LOCALIZATION_SYSTEM_H */

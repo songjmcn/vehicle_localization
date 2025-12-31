@@ -5,12 +5,41 @@ project(vehicle_localization C)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# 编译选项
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -O2")
+# ========== 构建类型配置 ==========
+# 公共编译选项
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
 
-# 可选：Debug构建添加调试信息
+# 设置可用的构建类型和默认值
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose the type of build" FORCE)
+endif()
+
+set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug;Release;ReleaseWithDebugInfo")
+
+# Debug 构建：最大调试支持，无优化
+# - -g: 包含调试符号
+# - -O0: 无优化（保持代码结构便于调试）
+# - -DDEBUG: 定义DEBUG宏，用于调试日志和检查
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -DDEBUG")
+    set(CMAKE_C_FLAGS_DEBUG "-g -O0 -DDEBUG")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_DEBUG}")
+endif()
+
+# Release 构建：最大优化，无调试信息
+# - -O3: 最高级别优化（代码体积和性能）
+# - -DNDEBUG: 禁用断言，移除调试代码
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_RELEASE}")
+endif()
+
+# ReleaseWithDebugInfo 构建：中等优化 + 调试符号
+# - -g: 包含调试符号（可用于gdb调试和栈跟踪）
+# - -O2: 中级优化（相比O3更保守，但仍有显著性能提升）
+# - -DNDEBUG: 禁用断言，便于生产环境
+if(CMAKE_BUILD_TYPE STREQUAL "ReleaseWithDebugInfo")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "-g -O2 -DNDEBUG")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_RELWITHDEBINFO}")
 endif()
 
 # 项目版本
@@ -27,9 +56,9 @@ set(SOURCES
     src/motion_model.c
     src/kalman_filter.c
     src/steering_model.c
+    src/wheel_odometry_processor.c
     tools/rtk_calibration.c
     src/localization_system.c
-    tools/wheel_odometry_processor.c
 )
 
 # 头文件目录
@@ -56,9 +85,6 @@ target_link_libraries(generate_steering_mapping PRIVATE m)
 # 可执行文件 - 离线标定工具（超简化版，无依赖）
 add_executable(offline_calibration tools/offline_calibration.c)
 
-# 可执行文件 - 转向角映射表测试
-add_executable(test_steering_mapping test_steering_mapping.c src/steering_model.c src/motion_model.c)
-target_link_libraries(test_steering_mapping PRIVATE m)
 
 # 可执行文件 - 转向角映射表集成示例
 add_executable(example_mapping_integration example_mapping_integration.c src/steering_model.c src/motion_model.c)
@@ -81,7 +107,7 @@ install(FILES
     tools/rtk_calibration.h
     src/localization_system.h
     src/localization_system_private.h
-    tools/wheel_odometry_processor.h
+        tools/wheel_odometry_processor.h.bak
     DESTINATION include
 )
 
@@ -94,6 +120,41 @@ message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "========================================")
 
-# 显示编译标志
-message(STATUS "Compiler Flags: ${CMAKE_C_FLAGS}")
-message(STATUS "Output Directory: ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+# 显示编译标志和构建类型详情
+message(STATUS "")
+message(STATUS "📋 Build Configuration Details:")
+message(STATUS "  Compiler: ${CMAKE_C_COMPILER}")
+message(STATUS "  C Standard: C99")
+message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
+
+# 根据构建类型显示对应的编译标志说明
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message(STATUS "  Configuration: Debug Build")
+    message(STATUS "    • Optimization: -O0 (No optimization)")
+    message(STATUS "    • Debug Info: -g (Full debug symbols)")
+    message(STATUS "    • Macro: -DDEBUG (Debug macros enabled)")
+    message(STATUS "    • Use Case: Development & Debugging")
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+    message(STATUS "  Configuration: Release Build")
+    message(STATUS "    • Optimization: -O3 (Maximum optimization)")
+    message(STATUS "    • Debug Info: None (Stripped)")
+    message(STATUS "    • Macro: -DNDEBUG (Assertions disabled)")
+    message(STATUS "    • Use Case: Production & Performance")
+elseif(CMAKE_BUILD_TYPE STREQUAL "ReleaseWithDebugInfo")
+    message(STATUS "  Configuration: ReleaseWithDebugInfo Build")
+    message(STATUS "    • Optimization: -O2 (Balanced optimization)")
+    message(STATUS "    • Debug Info: -g (Debug symbols for profiling)")
+    message(STATUS "    • Macro: -DNDEBUG (Assertions disabled)")
+    message(STATUS "    • Use Case: Production with debugging capability")
+endif()
+
+message(STATUS "")
+message(STATUS "📁 Output Directories:")
+message(STATUS "  Executables: ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+message(STATUS "  Libraries: ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+message(STATUS "")
+message(STATUS "🚀 Usage:")
+message(STATUS "  Debug:               cmake -DCMAKE_BUILD_TYPE=Debug ..")
+message(STATUS "  Release:             cmake -DCMAKE_BUILD_TYPE=Release ..")
+message(STATUS "  ReleaseWithDebugInfo: cmake -DCMAKE_BUILD_TYPE=ReleaseWithDebugInfo ..")
+message(STATUS "========================================")
