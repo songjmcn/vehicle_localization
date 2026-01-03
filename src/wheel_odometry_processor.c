@@ -151,6 +151,33 @@ int wheel_odometry_processor_update(WheelOdometryProcessor_t *processor,
 #endif
             }
         }
+        
+        /* === 异常数据检测：同时归零异常 ===
+         * 如果两轮脉冲同时归零(0或接近0)，但上一次读数不是接近max_count
+         * 这通常表示CAN帧错误/传感器故障，应该忽略此次更新
+         */
+        if (left_pulse_count < 10 && right_pulse_count < 10) {
+            /* 两轮同时接近0 */
+            if (processor->last_left_pulse_count > 100 && processor->last_right_pulse_count > 100) {
+                /* 但上一次不是接近溢出值，说明不是真正的溢出归零 */
+                if (processor->last_left_pulse_count < (processor->config.max_count - 100) &&
+                    processor->last_right_pulse_count < (processor->config.max_count - 100)) {
+                    /* 判定为异常数据，保持上次的脉冲值，忽略此次更新 */
+#ifdef DEBUG
+                    printf("Anomaly detected: both wheels near zero (RL=%u, RR=%u) but prev not near overflow. Skipping.\n",
+                           left_pulse_count, right_pulse_count);
+#endif
+                    output->velocity = (float)processor->last_velocity;
+                    output->distance = (float)processor->accumulated_distance;
+                    output->timestamp = timestamp;
+                    output->gear = gear;
+                    output->rear_left_direction = WHEEL_DIRECRTION_INVALID;
+                    output->rear_right_direction = WHEEL_DIRECRTION_INVALID;
+                    /* 不更新last_*_pulse_count，保持上一次的有效值 */
+                    return 0;
+                }
+            }
+        }
     } else {
         left_delta = (int32_t)(left_pulse_count - processor->last_left_pulse_count);
         right_delta = (int32_t)(right_pulse_count - processor->last_right_pulse_count);
@@ -203,6 +230,9 @@ int wheel_odometry_processor_update(WheelOdometryProcessor_t *processor,
 
     /* 脉冲 → 距离转换 */
     double wheel_circumference = 2.0 * M_PI * processor->config.wheel_radius;
+    /* pulse_delta已经是(left_delta + right_delta) / 2的平均脉冲（见Line 189）
+     * 直接用于距离计算，无需再除以2
+     */
     double distance_delta = (double)pulse_delta / processor->config.pulses_per_wheel_rev
                            * wheel_circumference;
     if(pulse_delta>0){
@@ -224,43 +254,21 @@ int wheel_odometry_processor_update(WheelOdometryProcessor_t *processor,
     double adjusted_velocity_for_direction = raw_velocity;
     /* 不再设为0，这样倒车时的方向判断才能正确 */
 
-    /* 低速平滑处理 - 基于原始速度 */
-    double smoothed_velocity = raw_velocity;
-
-    /* === 🔴 关键修复：禁用低速平滑滤波（会破坏倒车） ===
-     * 低速平滑滤波的缺陷：
-     *   1. 会把低速倒车的速度平滑成接近0
-     *   2. 导致yaw_rate=0，heading不更新，Y坐标不累积
-     *   3. 对于轮向数据错误的情况（R档但轮Forward）特别有害
-     * 
-     * 修复：完全禁用低速平滑，接受低速数据的天然噪声
-     * （噪声会被Kalman滤波处理）
-     */
-    /* 禁用：原来的平滑滤波代码被注释掉
-    if (fabs(raw_velocity) < processor->config.low_speed_threshold) {
-        // ... 平滑滤波代码 ...
-    } else {
-        processor->buffer_count = 0;
-        processor->buffer_index = 0;
-    }
-    */
-    /* 现在直接使用raw_velocity，不进行任何平滑 */
-    smoothed_velocity = raw_velocity;
-    processor->buffer_count = 0;
-    processor->buffer_index = 0;
-
-    /* 计算平滑后的距离增量 */
-    double smoothed_distance_delta = smoothed_velocity * dt_sec;
-
     /* === 推导运动方向（基于调整后的速度） === */
     VehicleDirection_t direction = wheel_odometry_derive_direction(
         adjusted_velocity_for_direction, gear, rear_left_state, rear_right_state);
 
-    /* === 关键修复：根据方向调整距离增量 === */
-    /* 倒车时，distance_delta应该变成负数
-     * 但由于low_speed_threshold可能把distance平滑成0，需要恢复幅度
+    /* === 关键修复：删除冗余的distance→velocity→distance转换链
+     * 之前的错误流程：
+     *   distance_delta → raw_velocity → smoothed_velocity → smoothed_distance_delta → final_distance_delta
+     *   这是往返转换，因为 smoothed_velocity = raw_velocity，所以 smoothed_distance_delta ≈ distance_delta
+     *   导致精度损失且逻辑不清
+     *
+     * 修复后的正确流程：
+     *   distance_delta → (应用方向符号) → final_distance_delta → signed_velocity
+     *   直接、清晰、无冗余
      */
-    double final_distance_delta = fabs(smoothed_distance_delta);  /* 获取幅度 */
+    double final_distance_delta = fabs(distance_delta);  /* 获取幅度，直接使用原始脉冲计算的distance_delta */
 
     if (direction == DIRECTION_REVERSE) {
         final_distance_delta = -final_distance_delta;  /* 后退：距离增量为负 */
@@ -269,15 +277,15 @@ int wheel_odometry_processor_update(WheelOdometryProcessor_t *processor,
     }
     /* 前进时保持原值（final_distance_delta为正） */
 
-    /* 计算最终的有符号速度（基于调整后的距离增量）*/
+    /* 计算最终的有符号速度（基于有符号的距离增量）*/
     double signed_velocity = final_distance_delta / dt_sec;
 
     /* === 累加距离 === */
     processor->accumulated_distance += final_distance_delta;
 
 #ifdef DEBUG
-    printf("wheel direction:%d, pulse_delta:%d, raw_velocity:%f, smoothed_distance:%lf->%lf, velocity:%f, accumulated:%lf\n",
-           direction, pulse_delta, raw_velocity, smoothed_distance_delta, final_distance_delta, signed_velocity, processor->accumulated_distance);
+    printf("wheel direction:%d, pulse_delta:%d, raw_velocity:%f, distance_delta:%lf, signed_velocity:%f, accumulated:%lf\n",
+           direction, pulse_delta, raw_velocity, final_distance_delta, signed_velocity, processor->accumulated_distance);
 #endif
 
     /* 保存状态 */

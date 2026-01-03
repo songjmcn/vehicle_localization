@@ -1129,7 +1129,7 @@ if __name__ == "__main__":
             "rtk_can.csv",
             "../rtk_can.csv",
             "../../rtk_can.csv",
-            "/Users/alex/workspace/code_review/vehicle_localization/rtk_can.csv"
+            "/Users/alex/workspace/code_review/vehicle_localization/rtk_data.csv"
         ]
         
         csv_file = None

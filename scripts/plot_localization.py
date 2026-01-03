@@ -598,7 +598,7 @@ Y 坐标范围:     {self.df['y'].min():.2f} ~ {self.df['y'].max():.2f} m
 
 def main():
     """主函数"""
-    csv_file = '../vehicle_localization.csv'
+    csv_file = 'vehicle_localization.csv'
 
     # 检查文件是否存在
     if not os.path.exists(csv_file):

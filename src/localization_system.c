@@ -126,7 +126,7 @@ static int localization_system_init_internal(LocalizationSystem_t *sys,
         .steering_filter_alpha = 0.1f,
     };
     WheelConfig_t wheel_config = {
-        .pulses_per_wheel_rev = 96,
+        .pulses_per_wheel_rev = 96,     /* 编码器：每轮每圈96脉冲（正确的原始值）*/
         .wheel_radius = 0.35,
         .low_speed_threshold = MIN_SPEED_THRESHOLD,
         .pulse_timeout_ms = 500,
@@ -372,27 +372,16 @@ int localization_system_process(LocalizationSystem_t *sys,
     kalman_filter_get_state(&sys->kalman_filter, &current_state_with_direction);
     current_state_with_direction.direction = vehicle_direction;  /* 设置计算好的方向 */
 
-    /* === 🔴 关键修复：对velocity进行符号化处理
-     * motion_model_predict期望有符号速度：
+    /* === 修复：删除重复的速度符号处理
+     * wheel_odometry_processor在计算velocity时已经应用了方向符号：
      *   - 前进(DIRECTION_FORWARD): velocity > 0
      *   - 倒车(DIRECTION_REVERSE): velocity < 0
-     * 这样可以自动在position update中处理方向反向
-     * 见motion_model.c第140-145行的说明
+     *   - 停止(DIRECTION_STATIONARY): velocity ≈ 0
      *
-     * 重要：wheel_odometry_processor已经返回有符号速度
-     *   - 前进时为正值
-     *   - 倒车时为负值
-     * 因此这里应该检查direction并调整符号，而不是简单的fabs+符号
-     *
-     * === 额外重要修复 ===
-     * 当轮向数据错误（R档但轮Forward）时，wheel_odometry的velocity仍然为正
-     * 需要基于方向判断（vehicle_direction）来强制符号
+     * 修复：直接使用processor返回的velocity，无需再次处理符号
+     * motion_model_predict会使用这个已有符号的velocity进行位置更新
      */
-    double signed_velocity = fabs(velocity);  /* 获取速度的绝对值 */
-    if (vehicle_direction == DIRECTION_REVERSE) {
-        signed_velocity = -signed_velocity;   /* 倒车时变为负数，即使输入为正 */
-    }
-    /* 若为DIRECTION_STATIONARY或DIRECTION_FORWARD，velocity保持正值 */
+    double signed_velocity = velocity;  /* 直接使用processor返回的已有符号的速度，无需重复处理 */
 
     /* 预测步骤 */
     kalman_filter_predict_with_state(&sys->kalman_filter,
@@ -401,8 +390,17 @@ int localization_system_process(LocalizationSystem_t *sys,
                                       filtered_steering,
                                       sensor_data->timestamp);
 
+    /* === 关键修复：确保Kalman滤波的update使用脉冲处理后的速度，而不是原始的不准确的speed数据
+     * 在低速时，脉冲计数比ECU的speed更准确，所以需要让Kalman滤波也使用处理后的速度作为观测
+     * 否则Kalman会用不准确的speed来修正脉冲速度，导致输出是两者的混合
+     *
+     * 因为sensor_data是const，我们创建一个修改后的副本来传给update
+     */
+    SensorReadings_t sensor_data_with_corrected_velocity = *sensor_data;
+    sensor_data_with_corrected_velocity.wheel_odometry.velocity = velocity;  /* 用处理后的脉冲速度覆盖原始速度 */
+
     /* 更新步骤 */
-    kalman_filter_update(&sys->kalman_filter, sensor_data);
+    kalman_filter_update(&sys->kalman_filter, &sensor_data_with_corrected_velocity);
     
     /* 获取估计状态 */
     kalman_filter_get_state(&sys->kalman_filter, estimated_state);

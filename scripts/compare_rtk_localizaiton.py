@@ -582,7 +582,7 @@ def main():
     # 文件路径
     rtk_converted_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_converted.csv'
     localization_file = '/Users/alex/workspace/code_review/vehicle_localization/vehicle_localization.csv'
-    rtk_raw_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_can.csv'
+    rtk_raw_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_data.csv'
     output_dir = '/Users/alex/workspace/code_review/vehicle_localization/scripts/trajectory_comparison'
 
     # 检查文件

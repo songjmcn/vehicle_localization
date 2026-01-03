@@ -42,7 +42,7 @@ def get_signal_sync_time(signals:list, time:float):
             result = sig
     return result    
 if __name__ == "__main__":
-    blf_file = "/Users/alex/Downloads/LEV-RTK+Vehicle_Data/Lev01_R19_ParallelParkingInLeft_5kph_002.blf"
+    blf_file = "/Users/alex/Downloads/LEV-RTK+Vehicle_Data/Lev01_R19_Stragight__forward_0_5kph_001.blf"
     vehicle_dbc = "dbc/LEV-01/LEV01_ADAS_V2.4_20240226.dbc"
     rtk_dbc = "dbc/RTK/CAN_Protocol 2.0_20210507-motorola.dbc"
     vehicle_signal_mapping = {"ABS_RRWheelSpeedRC":"WheelCounter_RR",
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     print("vehicle can len:{}".format(len(vehcle_can)))
     rtk_can = [msg for msg in can_data if msg.channel == 1]
     vehicle_msgs = dbc_decode_message(vehicle_dbc, vehcle_can)
-    csv_f = open("vehicle_can.csv","w")
+    csv_f = open("vehicle_data.csv","w")
     # Write CSV header
     wheel_counter_msg = vehicle_msgs[0x124]
     csv_f.write("Speed;WheelCounter_RR;WheelCounter_RL;WheelCounter_Dir_RR;WheelCounter_Dir_RL;SteeringWheel_Angle;GearMode;IMU_y_acc;IMU_x_acc;IMU_z_acc;timestamp\r\n")
@@ -107,7 +107,7 @@ if __name__ == "__main__":
                            "AngleHeading":"RTK_heading"}
     
     RTK_msgs = dbc_decode_message(rtk_dbc, rtk_can)
-    csv_f = open("rtk_can.csv","w")
+    csv_f = open("rtk_data.csv","w")
     csv_f.write("RTK_x;RTK_y;RTK_z;RTK_heading;RTK_qualit;timestamp\r\n")
     rtk_heading_msgs = RTK_msgs[0x32A]
     x_list = []

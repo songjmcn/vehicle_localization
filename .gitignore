@@ -13,6 +13,7 @@ build
 *.bmp
 *.tiff
 *.jpeg
+*.log
 __pycache__
 rtk_trajectory_plots
 trajectory_comparison

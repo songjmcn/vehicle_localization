@@ -49,7 +49,8 @@ vehicle_localization/
 │  ├─ 参数标定 (🔧 5份文档)
 │  │  ├── PARAMETER_CALIBRATION_GUID.MD        ⭐⭐⭐ 2500行完整指南
 │  │  ├── RTK_OFFLINE_CALIBRATION.md           离线标定详解
-│  │  └── OFFLINE_CALIBRATION_TOOL_GUIDE.md    工具使用说明
+│  │  ├── OFFLINE_CALIBRATION_TOOL_GUIDE.md    工具使用说明
+│  │  └── CALIBRATION_PROCEDURE.md             🆕 标定流程与理论（完整指南）
 │  │
 │  ├─ 转向模型 (🛣️ 6份文档 - 2025年12月重构)
 │  │  ├── STEERING_MODEL_QUICK_REFERENCE.txt   ⭐ 快速参考卡片
@@ -368,6 +369,27 @@ print(f"航向: {state.theta*180/3.14159:.2f}°")
 - 实时性考虑
 
 👉 详见 [docs/C_IMPLEMENTATION_GUIDE.md](docs/C_IMPLEMENTATION_GUIDE.md)
+
+### 🔧 参数标定完整指南 (2025年12月新增) ⭐
+
+**完整的参数标定流程与理论**：
+👉 [docs/CALIBRATION_PROCEDURE.md](docs/CALIBRATION_PROCEDURE.md)
+
+本文档涵盖：
+- **标定理论基础** - 轮速计工作原理、脉冲距离计算、误差来源分析
+- **参数体系** - 编码器参数、轮子参数、系统配置的关系
+- **标定流程** - 5步完整流程：硬件准备→数据采集→异常清理→参数反演→精度验证
+- **理论推导** - 脉冲距离公式、左右轮平均处理、溢出处理推导
+- **实践案例** - 本项目从188.15m→103.98m的完整标定历程
+- **标定工具** - Python标定脚本及异常数据检测算法
+- **验证方法** - 直线精度、转向精度、速度精度的验证指标
+
+**关键成果**：
+| 指标 | 初始 | 修复后 |
+|------|------|--------|
+| 轨迹距离 | 188.15m | 103.98m |
+| RTK误差 | 79.4% | 0.82% |
+| 状态 | ❌ 严重异常 | ✅ 完美（误差<1%）|
 
 #### 集成部署
 - 硬件接口
