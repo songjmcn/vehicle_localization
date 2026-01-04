@@ -286,7 +286,19 @@ int main()
         printf("ERROR: Failed to initialize localization system!\n");
         return -1;
     }
-    printf("✓ Localization system initialized\n\n");
+    CalibrationParams_t calibration = {
+        .wheel_calibration_factor = 0.99240929,
+        .steering_angle_offset = -0.00914977,
+        .steering_angle_gain = 1.0,
+        .imu_accel_bias_x = 0.0f,
+        .imu_accel_bias_y = 0.0f,
+        .imu_gyro_bias_z = 0.0f,
+        .imu_accel_scale_x = 1.0,
+        .imu_accel_scale_y = 1.0,
+        .imu_lateral_accel_bias = 0.0f,
+        .imu_lateral_accel_scale = 1.0f
+    };
+    localization_system_set_calibration(&localization_sys,&calibration);
     
     /* === ISO 8855坐标系配置确认 === */
     printf("═══════════════════════════════════════════════════════\n");

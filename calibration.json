@@ -1,16 +1,16 @@
 {
   "metadata": {
     "format_version": 1,
-    "timestamp": "2026-01-04T16:41:12Z",
+    "timestamp": "2026-01-04T18:38:04Z",
     "tool": "offline_calibration_from_csv",
-    "calibration_points_count": 1600
+    "calibration_points_count": 8462
   },
   "parameters": {
-    "wheel_calibration_factor": 0.98846394,
+    "wheel_calibration_factor": 0.99240929,
     "wheel_factor_confidence": 0.9500,
     "wheel_factor_uncertainty": 0.010000,
-    "steering_angle_offset_rad": -0.00086729,
-    "steering_angle_offset_deg": -0.0497,
+    "steering_angle_offset_rad": -0.00914977,
+    "steering_angle_offset_deg": -0.5242,
     "steering_angle_gain": 1.00000000,
     "steering_gain_confidence": 0.9200,
     "steering_gain_uncertainty": 0.020000,
@@ -21,13 +21,13 @@
     "imu_accel_scale_y": 1.00000000
   },
   "statistics": {
-    "mean_position_error_m": 1.646785,
-    "std_position_error_m": 2.748381,
+    "mean_position_error_m": 0.910382,
+    "std_position_error_m": 0.786298,
     "min_position_error_m": 0.000000,
-    "max_position_error_m": 9.994764,
-    "mean_heading_error_rad": 0.00086729,
-    "std_heading_error_rad": 0.00148735,
-    "max_heading_error_rad": 0.00539626
+    "max_position_error_m": 2.126710,
+    "mean_heading_error_rad": 0.01648298,
+    "std_heading_error_rad": 0.01078312,
+    "max_heading_error_rad": 0.02895182
   },
   "iso8855_heading_validation": {
     "description": "ISO 8855 heading range validation ([-pi, pi])",
@@ -42,10 +42,10 @@
     "quality_2_count": 0,
     "quality_3_count": 0,
     "quality_4_count": 0,
-    "quality_5_count": 1600
+    "quality_5_count": 8462
   },
   "quality_assessment": {
-    "overall_confidence": 0.2296,
-    "status": "Poor"
+    "overall_confidence": 0.6113,
+    "status": "Fair"
   }
 }

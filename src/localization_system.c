@@ -104,8 +104,8 @@ static int localization_system_init_internal(LocalizationSystem_t *sys,
     
     /* 设置默认校准参数 */
     CalibrationParams_t calibration = {
-        .wheel_calibration_factor = 1,
-        .steering_angle_offset = 0,
+        .wheel_calibration_factor = 1,  /* 轮速计校准因子 */
+        .steering_angle_offset = 0,     /* 转向角零偏 (rad) */
         .steering_angle_gain = 1.0,
         .imu_accel_bias_x = 0.0,
         .imu_accel_bias_y = 0.0,
