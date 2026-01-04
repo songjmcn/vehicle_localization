@@ -126,16 +126,16 @@ static double calculate_std_dev(const double *data, uint32_t count, double mean)
 }
 
 /**
- * @brief 标记离群点（σ-3准则）
+ * @brief 标记离群点
  * 
- * 将超过均值±3倍标准差的点标记为离群点
+ * 使用绝对残差阈值检测离群点：|residual| > max(3*std_dev, 5.0)
  * 返回有效的（非离群）点的个数
  */
 static uint32_t mark_outliers(const double *residuals, uint32_t count,
                               bool *is_outlier, uint32_t *outlier_count) {
     *outlier_count = 0;
     
-    if (count < 3) {
+    if (count < 2) {
         memset(is_outlier, false, count * sizeof(bool));
         return count;
     }
@@ -144,13 +144,15 @@ static uint32_t mark_outliers(const double *residuals, uint32_t count,
     double mean = calculate_mean(residuals, count);
     double std_dev = calculate_std_dev(residuals, count, mean);
     
-    /* 离群点阈值：3-sigma 或 绝对残差 > 10 */
-    double threshold = (std_dev > 1e-6) ? 3.0 * std_dev : 10.0;
+    /* 离群点阈值：max(3*std_dev, 5.0) 米 */
+    /* 如果标准差为0（完美拟合），使用5米作为绝对阈值 */
+    double threshold = (std_dev > 1e-6) ? 3.0 * std_dev : 5.0;
+    threshold = (threshold > 5.0) ? threshold : 5.0;  /* 至少5米 */
     
     uint32_t valid_count = 0;
     for (uint32_t i = 0; i < count; i++) {
         double residual_abs = fabs(residuals[i]);
-        if (residual_abs > threshold && threshold > 1e-7) {
+        if (residual_abs > threshold) {
             is_outlier[i] = true;
             (*outlier_count)++;
         } else {
@@ -192,26 +194,25 @@ static double estimate_wheel_calibration_weighted(RTKCalibrationManager_t *manag
     
     uint32_t num_segments = manager->calibration_count - 1;
     
-    /* 分配临时数组存储距离差值和权重 */
+    /* 分配临时数组 */
     double *odo_dists = (double *)malloc(num_segments * sizeof(double));
     double *rtk_dists = (double *)malloc(num_segments * sizeof(double));
     double *weights = (double *)malloc(num_segments * sizeof(double));
     bool *is_outlier = (bool *)malloc(num_segments * sizeof(bool));
     double *residuals = (double *)malloc(num_segments * sizeof(double));
-    double *ratios = (double *)malloc(num_segments * sizeof(double));  /* 比例列表用于排序 */
     
-    if (!odo_dists || !rtk_dists || !weights || !is_outlier || !residuals || !ratios) {
+    if (!odo_dists || !rtk_dists || !weights || !is_outlier || !residuals) {
         free(odo_dists);
         free(rtk_dists);
         free(weights);
         free(is_outlier);
         free(residuals);
-        free(ratios);
         return 1.0;
     }
     
-    /* 计算距离和权重 */
-    double sum_weight = 0.0;
+    /* 第一步：计算距离和权重 */
+    double sum_odo = 0.0;
+    double sum_rtk = 0.0;
     
     for (uint32_t i = 0; i < num_segments; i++) {
         RTKCalibrationPoint_t *prev = &manager->calibration_points[i];
@@ -227,55 +228,38 @@ static double estimate_wheel_calibration_weighted(RTKCalibrationManager_t *manag
         double rtk_dy = curr->rtk_state.y - prev->rtk_state.y;
         rtk_dists[i] = sqrt(rtk_dx * rtk_dx + rtk_dy * rtk_dy);
         
-        /* 权重 = 质量等级 × 轨迹长度（质量等级: 0-5） */
+        /* 权重 = 质量等级 × 轨迹长度 */
         double quality_weight = (double)curr->rtk_state.quality / 5.0;
         double trajectory_weight = (rtk_dists[i] > 0.01) ? rtk_dists[i] : 0.01;
         weights[i] = quality_weight * trajectory_weight;
         
-        sum_weight += weights[i];
-        
-        /* 计算比例（用于鲁棒初始估计） */
-        ratios[i] = (rtk_dists[i] > 1e-6) ? odo_dists[i] / rtk_dists[i] : 1.0;
+        sum_odo += odo_dists[i];
+        sum_rtk += rtk_dists[i];
     }
     
-    if (num_segments < 2 || sum_weight < 1e-6) {
+    if (sum_rtk < 1e-6) {
         free(odo_dists);
         free(rtk_dists);
         free(weights);
         free(is_outlier);
         free(residuals);
-        free(ratios);
         return 1.0;
     }
     
-    /* 第一步：用加权中位数进行鲁棒初始估计 */
-    /* 简化处理：使用排除极端值的均值 */
-    double sum_ratio_trimmed = 0.0;
-    uint32_t count_trimmed = 0;
-    double min_ratio = 999.0, max_ratio = -999.0;
-    
-    for (uint32_t i = 0; i < num_segments; i++) {
-        if (ratios[i] >= 0.5 && ratios[i] <= 2.0) {  /* 合理范围 */
-            sum_ratio_trimmed += ratios[i];
-            count_trimmed++;
-            if (ratios[i] < min_ratio) min_ratio = ratios[i];
-            if (ratios[i] > max_ratio) max_ratio = ratios[i];
-        }
-    }
-    
-    double initial_factor = (count_trimmed > 0) ? sum_ratio_trimmed / count_trimmed : 1.0;
+    /* 第二步：鲁棒初始估计（简单均值） */
+    double initial_factor = sum_odo / sum_rtk;
     
     /* 计算残差 */
     for (uint32_t i = 0; i < num_segments; i++) {
         residuals[i] = odo_dists[i] - initial_factor * rtk_dists[i];
     }
     
-    /* 第二步：检测离群点 */
+    /* 第三步：检测离群点 */
     uint32_t outlier_count = 0;
     mark_outliers(residuals, num_segments, is_outlier, &outlier_count);
     manager->outlier_count = outlier_count;
     
-    /* 第三步：加权最小二乘法（排除离群点） */
+    /* 第四步：加权最小二乘法（排除离群点） */
     double numerator = 0.0;
     double denominator = 0.0;
     uint32_t inlier_count = 0;
@@ -289,22 +273,21 @@ static double estimate_wheel_calibration_weighted(RTKCalibrationManager_t *manag
         }
     }
     
-    if (denominator < 1e-6) {
+    if (denominator < 1e-6 || inlier_count < 1) {
         free(odo_dists);
         free(rtk_dists);
         free(weights);
         free(is_outlier);
         free(residuals);
-        free(ratios);
         return 1.0;
     }
     
     double calibration_factor = numerator / denominator;
     calibration_factor = clamp(calibration_factor, 0.8, 1.2);
     
-    /* 第四步：计算拟合优度和残差标准差（使用内点数据） */
-    double ss_res = 0.0;  /* 残差平方和 */
-    double ss_tot = 0.0;  /* 总平方和 */
+    /* 第五步：计算拟合优度和残差标准差 */
+    double ss_res = 0.0;
+    double ss_tot = 0.0;
     double sum_odo_weighted = 0.0;
     double sum_weight_inlier = 0.0;
     
@@ -318,7 +301,6 @@ static double estimate_wheel_calibration_weighted(RTKCalibrationManager_t *manag
     
     double mean_odo = (sum_weight_inlier > 1e-6) ? sum_odo_weighted / sum_weight_inlier : 0.0;
     
-    /* 使用最终的calibration_factor重新计算残差 */
     for (uint32_t i = 0; i < num_segments; i++) {
         if (!is_outlier[i]) {
             double w = weights[i];
@@ -329,7 +311,7 @@ static double estimate_wheel_calibration_weighted(RTKCalibrationManager_t *manag
         }
     }
     
-    /* R² = 1 - (SS_res / SS_tot) */
+    /* 计算R² */
     if (ss_tot > 1e-6) {
         *r_squared = 1.0 - (ss_res / ss_tot);
         *r_squared = clamp(*r_squared, 0.0, 1.0);
@@ -349,7 +331,6 @@ static double estimate_wheel_calibration_weighted(RTKCalibrationManager_t *manag
     free(weights);
     free(is_outlier);
     free(residuals);
-    free(ratios);
     
     return calibration_factor;
 }
