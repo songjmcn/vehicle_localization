@@ -50,6 +50,15 @@ int rtk_calibration_init(RTKCalibrationManager_t *manager, uint32_t max_points) 
     
     manager->calibration_valid = false;
     
+    /* Phase 2 (P1) 初始化转向增益标定管理器 */
+    if (steering_gain_manager_init(&manager->steering_gain_manager) != 0) {
+        free(manager->calibration_points);
+        manager->calibration_points = NULL;
+        return -1;
+    }
+    manager->steering_gain_valid = false;
+    manager->steering_gain_wheelbase = 2.7;  /* 默认车轴距 */
+    
     return 0;
 }
 
@@ -499,6 +508,16 @@ int rtk_calibration_compute(RTKCalibrationManager_t *manager,
     calibration->steering_angle_offset = (float)steering_offset_d;
     calibration->steering_angle_gain = (float)steering_gain_d;
     
+    /* Phase 2 (P1) 如果有足够的转向增益标定点，进行转向增益估计 */
+    if (manager->steering_gain_manager.point_count >= 10) {
+        rtk_calibration_compute_steering_gain(manager);
+        if (manager->steering_gain_valid) {
+            /* 使用转向增益估计结果更新校准参数 */
+            calibration->steering_angle_gain = 
+                (float)rtk_calibration_get_steering_gain(manager);
+        }
+    }
+    
     /* 其他参数保持默认值 */
     calibration->imu_accel_bias_x = 0.0;
     calibration->imu_accel_bias_y = 0.0;
@@ -750,3 +769,167 @@ void rtk_calibration_print_diagnostics(const RTKCalibrationManager_t *manager) {
     
     printf("\n====================================\n\n");
 }
+
+/* ============================================================================
+ * Phase 2 (P1) 转向角增益标定实现
+ * ============================================================================ */
+
+int rtk_calibration_set_steering_wheelbase(RTKCalibrationManager_t *manager,
+                                           double wheelbase) {
+    if (!manager || wheelbase <= 0.0) {
+        return -1;
+    }
+    
+    manager->steering_gain_wheelbase = wheelbase;
+    return 0;
+}
+
+/**
+ * @brief 计算航向角误差并考虑圆周率包裹
+ */
+static double compute_heading_error(double odo_heading, double rtk_heading) {
+    double error = rtk_heading - odo_heading;
+    
+    /* 归一化到 [-π, π] 范围 */
+    while (error > M_PI) error -= 2.0 * M_PI;
+    while (error < -M_PI) error += 2.0 * M_PI;
+    
+    return error;
+}
+
+/**
+ * @brief 计算两点间的轨迹距离
+ */
+static double compute_trajectory_distance(double x1, double y1, double x2, double y2) {
+    double dx = x2 - x1;
+    double dy = y2 - y1;
+    return sqrt(dx * dx + dy * dy);
+}
+
+int rtk_calibration_add_steering_gain_point(RTKCalibrationManager_t *manager,
+                                            const VehicleState_t *odometry_state,
+                                            const RTKData_t *rtk_state) {
+    if (!manager || !odometry_state || !rtk_state) {
+        return -1;
+    }
+    
+    /* 提取基本参数 */
+    double steering_angle = (double)odometry_state->steering_angle;
+    double velocity = (double)odometry_state->v;
+    double rtk_quality = (double)rtk_state->quality;
+    double timestamp = (double)odometry_state->timestamp / 1000.0;  /* 转换为秒 */
+    
+    /* 计算航向角误差 */
+    double heading_error = compute_heading_error(
+        (double)odometry_state->heading, (double)rtk_state->heading
+    );
+    
+    /* 计算轨迹距离（从上一点开始累积） */
+    double trajectory_distance = 0.0;
+    if (manager->steering_gain_manager.point_count > 0) {
+        SteeringGainCalibrationPoint_t *last_point = 
+            &manager->steering_gain_manager.points[
+                manager->steering_gain_manager.point_count - 1
+            ];
+        /* 使用速度和时间差估计轨迹距离 */
+        double time_delta = timestamp - last_point->timestamp;
+        if (time_delta > 0 && time_delta < 10.0) {  /* 10秒的合理上限 */
+            trajectory_distance = velocity * time_delta;
+        }
+    }
+    
+    /* 添加点到转向增益管理器 */
+    int result = steering_gain_add_point(
+        &manager->steering_gain_manager,
+        steering_angle,
+        heading_error,
+        velocity,
+        rtk_quality,
+        trajectory_distance,
+        timestamp
+    );
+    
+    return result;
+}
+
+int rtk_calibration_compute_steering_gain(RTKCalibrationManager_t *manager) {
+    if (!manager) {
+        return -1;
+    }
+    
+    /* 估计转向增益 */
+    uint32_t outlier_indices[MAX_STEERING_GAIN_POINTS];
+    uint32_t outlier_count = 0;
+    
+    int result = steering_gain_estimate(
+        &manager->steering_gain_manager,
+        outlier_indices,
+        &outlier_count
+    );
+    
+    if (result != 0) {
+        manager->steering_gain_valid = false;
+        return -1;
+    }
+    
+    /* 更新总体校准参数中的转向增益 */
+    double estimated_gain = steering_gain_get_estimated_gain(
+        &manager->steering_gain_manager
+    );
+    
+    manager->estimated_calibration.steering_angle_gain = (float)estimated_gain;
+    manager->steering_gain_valid = true;
+    
+    return 0;
+}
+
+double rtk_calibration_get_steering_gain(const RTKCalibrationManager_t *manager) {
+    if (!manager || !manager->steering_gain_valid) {
+        return 1.0;
+    }
+    
+    return steering_gain_get_estimated_gain(&manager->steering_gain_manager);
+}
+
+double rtk_calibration_get_steering_gain_confidence(const RTKCalibrationManager_t *manager) {
+    if (!manager || !manager->steering_gain_valid) {
+        return 0.0;
+    }
+    
+    return steering_gain_get_confidence(&manager->steering_gain_manager);
+}
+
+double rtk_calibration_get_steering_gain_uncertainty(const RTKCalibrationManager_t *manager) {
+    if (!manager || !manager->steering_gain_valid) {
+        return 0.0;
+    }
+    
+    return steering_gain_get_uncertainty(&manager->steering_gain_manager);
+}
+
+bool rtk_calibration_is_steering_gain_valid(const RTKCalibrationManager_t *manager) {
+    if (!manager) {
+        return false;
+    }
+    
+    return manager->steering_gain_valid && 
+           steering_gain_is_valid(&manager->steering_gain_manager);
+}
+
+uint32_t rtk_calibration_get_steering_gain_point_count(const RTKCalibrationManager_t *manager) {
+    if (!manager) {
+        return 0;
+    }
+    
+    return steering_gain_get_point_count(&manager->steering_gain_manager);
+}
+
+void rtk_calibration_clear_steering_gain(RTKCalibrationManager_t *manager) {
+    if (!manager) {
+        return;
+    }
+    
+    steering_gain_reset(&manager->steering_gain_manager);
+    manager->steering_gain_valid = false;
+}
+

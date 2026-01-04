@@ -1,15 +1,20 @@
 /**
  * @file rtk_calibration.h
  * @brief RTK标定模块
+ * 
+ * Phase 2 (P1) 扩展: 包含转向角增益标定功能
  */
 
 #ifndef RTK_CALIBRATION_H
 #define RTK_CALIBRATION_H
 
 #include "localization_types.h"
+#include "steering_gain_calibration.h"
 
 /**
  * @brief RTK标定管理器
+ * 
+ * Phase 2 (P1) 扩展: 集成转向角增益标定功能
  */
 typedef struct {
     RTKCalibrationPoint_t *calibration_points;
@@ -35,6 +40,11 @@ typedef struct {
     /* 校准参数 */
     CalibrationParams_t estimated_calibration;
     bool calibration_valid;
+    
+    /* Phase 2 (P1) 转向增益标定管理器 */
+    SteeringGainManager_t steering_gain_manager;
+    bool steering_gain_valid;
+    double steering_gain_wheelbase;  /* 车轴距(m)，用于增益反演 */
 } RTKCalibrationManager_t;
 
 /**
@@ -139,5 +149,89 @@ void rtk_calibration_online_update(RTKCalibrationManager_t *manager,
  * @param manager 管理器指针
  */
 void rtk_calibration_print_diagnostics(const RTKCalibrationManager_t *manager);
+
+/* ============================================================================
+ * Phase 2 (P1) 转向角增益标定 API
+ * ============================================================================ */
+
+/**
+ * @brief 设置转向增益标定的车轴距参数
+ * 
+ * 默认值: 2.7m (可根据实际车型调整)
+ * 车轴距用于从航向角误差反演增益: gain = 1 + slope/(k*wheelbase)
+ * 
+ * @param manager 管理器指针
+ * @param wheelbase 车轴距 (m)
+ * @return 0成功，-1失败
+ */
+int rtk_calibration_set_steering_wheelbase(RTKCalibrationManager_t *manager,
+                                           double wheelbase);
+
+/**
+ * @brief 添加转向增益标定点
+ * 
+ * 该函数集成里程计和RTK数据，计算航向角误差和权重，
+ * 为转向增益估计提供数据点。
+ * 
+ * @param manager 管理器指针
+ * @param odometry_state 里程计估计的状态
+ * @param rtk_state RTK测量的状态
+ * @return 0成功，-1失败
+ */
+int rtk_calibration_add_steering_gain_point(RTKCalibrationManager_t *manager,
+                                            const VehicleState_t *odometry_state,
+                                            const RTKData_t *rtk_state);
+
+/**
+ * @brief 计算转向增益标定参数
+ * 
+ * 基于累积的转向增益标定点，使用加权最小二乘法估计转向角增益。
+ * 该函数也会更新 manager->estimated_calibration 中的 steering_angle_gain 字段。
+ * 
+ * @param manager 管理器指针
+ * @return 0成功，-1失败
+ */
+int rtk_calibration_compute_steering_gain(RTKCalibrationManager_t *manager);
+
+/**
+ * @brief 获取转向增益估计值
+ * @param manager 管理器指针
+ * @return 估计的增益值 (或 1.0 如果无效)
+ */
+double rtk_calibration_get_steering_gain(const RTKCalibrationManager_t *manager);
+
+/**
+ * @brief 获取转向增益置信度
+ * @param manager 管理器指针
+ * @return 置信度 [0.0, 1.0]
+ */
+double rtk_calibration_get_steering_gain_confidence(const RTKCalibrationManager_t *manager);
+
+/**
+ * @brief 获取转向增益不确定性（±范围）
+ * @param manager 管理器指针
+ * @return 不确定性范围
+ */
+double rtk_calibration_get_steering_gain_uncertainty(const RTKCalibrationManager_t *manager);
+
+/**
+ * @brief 检查转向增益标定是否有效
+ * @param manager 管理器指针
+ * @return true 有效，false 无效或点数不足
+ */
+bool rtk_calibration_is_steering_gain_valid(const RTKCalibrationManager_t *manager);
+
+/**
+ * @brief 获取转向增益标定点数
+ * @param manager 管理器指针
+ * @return 标定点数
+ */
+uint32_t rtk_calibration_get_steering_gain_point_count(const RTKCalibrationManager_t *manager);
+
+/**
+ * @brief 清空转向增益标定数据
+ * @param manager 管理器指针
+ */
+void rtk_calibration_clear_steering_gain(RTKCalibrationManager_t *manager);
 
 #endif /* RTK_CALIBRATION_H */
