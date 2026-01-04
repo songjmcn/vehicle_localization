@@ -599,3 +599,79 @@ void steering_mapping_cleanup(SteeringModel_t *config) {
     config->steering_mapping.num_points = 0;
     config->steering_mapping.valid = false;
 }
+/* ========== Phase 2 (P1) RTK校准集成实现 ========== */
+
+/**
+ * @brief 获取当前转向角增益
+ */
+float steering_model_get_gain(SteeringModel_t *config) {
+    if (!config) {
+        return 1.0f;  /* 默认无补偿 */
+    }
+    
+    return config->steering_config.steering_angle_gain;
+}
+
+/**
+ * @brief 获取当前转向角零偏
+ */
+float steering_model_get_offset(SteeringModel_t *config) {
+    if (!config) {
+        return 0.0f;  /* 默认无偏置 */
+    }
+    
+    return config->steering_config.steering_angle_offset;
+}
+
+/**
+ * @brief 更新转向角增益
+ */
+int steering_model_update_gain(SteeringModel_t *config, float new_gain) {
+    if (!config) {
+        return -1;
+    }
+    
+    /* 验证增益值合理性 */
+    /* 允许范围 [0.5, 1.5]，推荐范围 [0.8, 1.2] */
+    if (new_gain < 0.5f || new_gain > 1.5f) {
+        return -1;  /* 增益超出合理范围 */
+    }
+    
+    config->steering_config.steering_angle_gain = new_gain;
+    return 0;
+}
+
+/**
+ * @brief 应用 RTK 校准结果
+ */
+int steering_model_apply_rtk_calibration(SteeringModel_t *config,
+                                         const void *calibration) {
+    if (!config || !calibration) {
+        return -1;
+    }
+    
+    /* 由于 void* 指针，我们需要通过 struct 访问 CalibrationParams_t */
+    /* 这里定义一个临时结构体指针来访问数据 */
+    typedef struct {
+        float wheel_calibration_factor;
+        float steering_angle_offset;
+        float steering_angle_gain;
+        /* 其他字段不在此处列举 */
+    } CalibrationParams_t;
+    
+    const CalibrationParams_t *calib_params = (const CalibrationParams_t *)calibration;
+    
+    /* 应用转向角零偏 */
+    config->steering_config.steering_angle_offset = calib_params->steering_angle_offset;
+    
+    /* 应用转向角增益，并验证范围 */
+    if (calib_params->steering_angle_gain < 0.5f || calib_params->steering_angle_gain > 1.5f) {
+        /* 增益超出合理范围，使用默认值 */
+        config->steering_config.steering_angle_gain = 1.0f;
+        return -1;
+    }
+    
+    config->steering_config.steering_angle_gain = calib_params->steering_angle_gain;
+    
+    return 0;
+}

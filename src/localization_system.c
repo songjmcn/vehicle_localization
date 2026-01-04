@@ -463,6 +463,10 @@ void localization_system_set_calibration(LocalizationSystem_t *sys,
     
     sys->calibration = *calibration;
     sys->kalman_filter.calibration = *calibration;
+    
+    /* Phase 2 (P1) RTK校准集成：应用转向模型的校准参数 */
+    /* 将 CalibrationParams_t 的转向参数应用到转向模型 */
+    steering_model_apply_rtk_calibration(&sys->heading_processer, calibration);
 }
 
 void localization_system_reset(LocalizationSystem_t *sys,

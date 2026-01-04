@@ -278,4 +278,58 @@ int steering_get_wheel_angles(SteeringModel_t *config,
  */
 void steering_mapping_cleanup(SteeringModel_t *config);
 
+/* ========== Phase 2 (P1) RTK校准集成接口 ========== */
+
+/**
+ * @brief 获取当前转向角增益
+ * 
+ * 从转向模型配置中读取当前设置的增益值
+ * 
+ * @param config 转向模型配置指针
+ * @return 当前转向角增益值 (1.0 = 无补偿)
+ */
+float steering_model_get_gain(SteeringModel_t *config);
+
+/**
+ * @brief 获取当前转向角零偏
+ * 
+ * 从转向模型配置中读取当前设置的零偏值
+ * 
+ * @param config 转向模型配置指针
+ * @return 当前转向角零偏 (rad)
+ */
+float steering_model_get_offset(SteeringModel_t *config);
+
+/**
+ * @brief 更新转向角增益
+ * 
+ * 用于应用外部校准系统（RTKCalibrationSystem_t）计算的增益值
+ * 
+ * @param config 转向模型配置指针
+ * @param new_gain 新的增益值 (1.0 = 无补偿，建议范围 [0.8, 1.2])
+ * @return 0成功，-1失败（增益值超出合理范围）
+ * 
+ * @note 此函数不修改零偏，零偏需通过 steering_model_apply_rtk_calibration 更新
+ */
+int steering_model_update_gain(SteeringModel_t *config, float new_gain);
+
+/**
+ * @brief 应用 RTK 校准结果
+ * 
+ * 一次性应用来自 CalibrationParams_t 的所有校准参数
+ * 包括转向角零偏和增益
+ * 
+ * @param config 转向模型配置指针
+ * @param calibration RTK 校准参数指针
+ * @return 0成功，-1失败（参数指针无效）
+ * 
+ * @note 这是主要的集成接口，用于从外部校准系统应用参数
+ * @example
+ *   CalibrationParams_t calibration;
+ *   rtk_calibration_system_get_result(&calib_sys, &calibration);
+ *   steering_model_apply_rtk_calibration(&steering_model, &calibration);
+ */
+int steering_model_apply_rtk_calibration(SteeringModel_t *config,
+                                         const void *calibration);
+
 #endif /* STEERING_MODEL_H */
