@@ -47,7 +47,12 @@ typedef struct {
     OdometryMeasurement_t odo;
     RTKMeasurement_t rtk;
     double position_error_m;   // 位置误差 (m)
-    double heading_error_rad;  // 航向角误差 (rad)
+    double heading_error_rad;  // 航向角误差 (rad, normalize后)
+    
+    /* ===== Heading角范围验证字段 ===== */
+    double heading_error_raw;  // 原始heading误差(未normalize) (rad)
+    uint8_t heading_error_large; // 标志：heading误差>π (1=大误差, 0=正常)
+    
     uint8_t valid;             // 是否有效 (1=有效, 0=无效)
 } CalibrationPoint_t;
 
@@ -71,6 +76,10 @@ typedef struct {
     double heading_error_mean;
     double heading_error_std;
     double heading_error_max;
+    
+    /* ===== ISO 8855 Heading角范围验证统计 ===== */
+    uint32_t heading_error_large_count;  // >π的heading误差点数
+    double heading_error_large_ratio;    // 大误差点占比
     
     // 数据质量
     uint32_t rtk_quality_distribution[6];  // [0]=quality 0, [5]=quality 5

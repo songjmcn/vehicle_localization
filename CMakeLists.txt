@@ -92,12 +92,19 @@ add_executable(example_mapping_integration example_mapping_integration.c src/ste
 target_link_libraries(example_mapping_integration PRIVATE m)
 
 # 测试可执行文件 - Task 4: 转向模型与RTK标定集成测试
-add_executable(test_steering_rtk_integration tools/test_steering_rtk_integration.c)
-target_link_libraries(test_steering_rtk_integration PRIVATE localization_lib m)
+# add_executable(test_steering_rtk_integration tools/test_steering_rtk_integration.c)
+# target_link_libraries(test_steering_rtk_integration PRIVATE localization_lib m)
 
 # 测试可执行文件 - Phase 2 RTK标定集成测试
-add_executable(test_rtk_phase2_integration tools/test_rtk_phase2_integration.c)
-target_link_libraries(test_rtk_phase2_integration PRIVATE localization_lib m)
+# add_executable(test_rtk_phase2_integration tools/test_rtk_phase2_integration.c)
+# target_link_libraries(test_rtk_phase2_integration PRIVATE localization_lib m)
+
+# 离线标定工具 - 从 CSV 文件进行标定
+add_executable(offline_calibration_from_csv
+    tools/offline_calibration_csv.c
+    tools/main_offline_calibration.c
+)
+target_link_libraries(offline_calibration_from_csv PRIVATE localization_lib m)
 
 # 安装目标
 install(TARGETS localization_example

@@ -36,7 +36,7 @@ static int split_csv_line(char *line, char **fields, int max_fields) {
     char *start = line;
     
     while (*ptr && count < max_fields) {
-        if (*ptr == ',') {
+        if (*ptr == ';') {
             *ptr = '\0';
             while (*start == ' ') start++;
             fields[count++] = start;
@@ -213,8 +213,25 @@ int align_measurements(
             double dy = rtk_data[i].y - odo_data[best_j].y;
             p->position_error_m = sqrt(dx * dx + dy * dy);
             
+            /* === Heading角范围验证 (ISO 8855一致性) === */
             double heading_diff = rtk_data[i].heading_rad - odo_data[best_j].heading;
+            
+            /* 保存原始差值(未normalize) */
+            p->heading_error_raw = heading_diff;
+            
+            /* 检测是否为大角度差(>π) */
+            p->heading_error_large = (fabs(heading_diff) > M_PI) ? 1 : 0;
+            
+            /* normalize后的结果用于后续标定 */
             p->heading_error_rad = normalize_angle_internal(heading_diff);
+            
+            /* 如果heading误差异常大，发出警告 */
+            if (p->heading_error_large) {
+                fprintf(stderr, "⚠ Warning: Large heading error at RTK point %u: "
+                        "raw=%.4f rad (%.2f°), normalized=%.4f rad (%.2f°)\n",
+                        i, heading_diff, heading_diff * 180 / M_PI,
+                        p->heading_error_rad, p->heading_error_rad * 180 / M_PI);
+            }
             
             // Mark as valid if error within reasonable bounds
             p->valid = (p->position_error_m < MAX_POSITION_JUMP) ? 1 : 0;
@@ -246,6 +263,9 @@ int compute_calibration_stats(const CalibrationPoint_t *points, int count, Calib
     stats->position_error_max = -1e9;
     stats->heading_error_max = -1e9;
     
+    /* ===== Heading大误差统计 ===== */
+    uint32_t heading_large_count = 0;
+    
     int valid_count = 0;
     
     for (int i = 0; i < count; i++) {
@@ -270,6 +290,11 @@ int compute_calibration_stats(const CalibrationPoint_t *points, int count, Calib
         if (abs_head_err > stats->heading_error_max)
             stats->heading_error_max = abs_head_err;
         
+        /* 计数大heading误差点 */
+        if (points[i].heading_error_large) {
+            heading_large_count++;
+        }
+        
         // Track RTK quality distribution
         if (points[i].rtk.quality < 6) {
             stats->rtk_quality_distribution[points[i].rtk.quality]++;
@@ -285,6 +310,21 @@ int compute_calibration_stats(const CalibrationPoint_t *points, int count, Calib
     stats->valid_points = valid_count;
     stats->position_error_mean = pos_sum / valid_count;
     stats->heading_error_mean = head_sum / valid_count;
+    
+    /* ===== 更新heading大误差统计 ===== */
+    stats->heading_error_large_count = heading_large_count;
+    stats->heading_error_large_ratio = (valid_count > 0) 
+                                      ? (double)heading_large_count / valid_count 
+                                      : 0;
+    
+    /* 如果大误差占比过高，发出警告 */
+    if (stats->heading_error_large_ratio > 0.1) {
+        fprintf(stderr, "⚠ WARNING: High proportion of large heading errors (>π): %.1f%% (%d/%d)\n",
+                stats->heading_error_large_ratio * 100.0,
+                heading_large_count, valid_count);
+        fprintf(stderr, "  This suggests potential RTK coordinate transformation issues\n");
+        fprintf(stderr, "  (ISO 8855 [-π, π] range assumption may be violated)\n");
+    }
     
     double pos_var = (pos_sum_sq / valid_count) - (stats->position_error_mean * stats->position_error_mean);
     stats->position_error_std = (pos_var > 0) ? sqrt(pos_var) : 0;
@@ -423,6 +463,17 @@ int output_json_result(const char *filename, const CalibrationResult_t *result,
     fprintf(fp, "    \"max_heading_error_rad\": %.8f\n", stats->heading_error_max);
     fprintf(fp, "  },\n");
     
+    /* ===== ISO 8855坐标系验证统计 ===== */
+    fprintf(fp, "  \"iso8855_heading_validation\": {\n");
+    fprintf(fp, "    \"description\": \"ISO 8855 heading range validation ([-pi, pi])\",\n");
+    fprintf(fp, "    \"large_error_count\": %u,\n", stats->heading_error_large_count);
+    fprintf(fp, "    \"large_error_ratio\": %.4f,\n", stats->heading_error_large_ratio);
+    fprintf(fp, "    \"large_error_threshold_rad\": %.4f,\n", (float)M_PI);
+    fprintf(fp, "    \"status\": \"%s\"\n", 
+            (stats->heading_error_large_ratio < 0.05) ? "PASS" :
+            (stats->heading_error_large_ratio < 0.10) ? "WARNING" : "FAIL");
+    fprintf(fp, "  },\n");
+    
     fprintf(fp, "  \"rtk_quality_analysis\": {\n");
     fprintf(fp, "    \"quality_0_count\": %d,\n", stats->rtk_quality_distribution[0]);
     fprintf(fp, "    \"quality_1_count\": %d,\n", stats->rtk_quality_distribution[1]);
@@ -474,6 +525,21 @@ void print_calibration_summary(const CalibrationResult_t *result, const Calibrat
     printf("  Heading Error:   Mean=%.6f rad, Std=%.6f rad, Max=%.6f rad\n",
            stats->heading_error_mean, stats->heading_error_std,
            stats->heading_error_max);
+    printf("\n");
+    
+    /* ===== ISO 8855 Heading角范围验证 ===== */
+    printf("ISO 8855 HEADING VALIDATION ([-π, π] range check):\n");
+    printf("  Large Error Count:  %u points (>π)\n", stats->heading_error_large_count);
+    printf("  Large Error Ratio:  %.2f%%\n", stats->heading_error_large_ratio * 100);
+    printf("  Status:             %s\n",
+           (stats->heading_error_large_ratio < 0.05) ? "✓ PASS" :
+           (stats->heading_error_large_ratio < 0.10) ? "⚠ WARNING (5-10%)" : 
+           "✗ FAIL (>10%)");
+    if (stats->heading_error_large_ratio >= 0.05) {
+        printf("  NOTE: High proportion of large heading errors detected.\n");
+        printf("        This may indicate RTK coordinate transformation issues.\n");
+        printf("        Check rtk_coordinate_converter.py for correctness.\n");
+    }
     printf("\n");
     
     printf("RTK QUALITY DISTRIBUTION:\n");

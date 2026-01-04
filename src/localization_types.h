@@ -277,11 +277,65 @@ typedef struct {
  * @brief 角度规范化函数
  * @param angle 输入角度 (rad)
  * @return 规范化后的角度 [-PI, PI]
+ * 
+ * 范围说明：当前系统使用[-π, π]范围而非ISO 8855标准的[0, 2π]
+ * 原因：[-π, π]对数值计算更友好，避免0° = 360°的歧义
+ * 与atan2()输出一致，符合C/C++库标准
  */
 static inline double normalize_angle(double angle) {
     while (angle > PI) angle -= 2 * PI;
     while (angle < -PI) angle += 2 * PI;
     return angle;
+}
+
+/**
+ * @brief 安全的角度规范化函数，检测>π的大差值
+ * 
+ * 用于标定和数据验证场景，可检测真实的大角度差
+ * 不进行normalize，返回原始角度差以便检测异常
+ * 
+ * @param angle_diff 角度差 (rad)
+ * @param out_is_large 输出参数，指示是否为大角度差(>π)
+ * @return 原始角度差（未经normalize）
+ */
+static inline double heading_normalize_safe(double angle_diff, bool *out_is_large) {
+    if (out_is_large) {
+        *out_is_large = (fabs(angle_diff) > PI);
+    }
+    return angle_diff;
+}
+
+/**
+ * @brief 安全的heading角度差计算
+ * 
+ * 计算两个heading角的差，检测是否超过±π范围
+ * 用于标定数据质量检查
+ * 
+ * @param heading_measured 测量heading角 (rad, [-π, π])
+ * @param heading_reference 参考heading角 (rad, [-π, π])
+ * @param out_normalized 输出参数，normalize后的差
+ * @param out_is_large 输出参数，指示是否为大角度差(>π)
+ * @return 未normalize的原始差值
+ * 
+ * 例：heading_measured=2.5π, heading_reference=-0.5π
+ *     raw_diff = 3π (>π，标记为large)
+ *     normalized_diff = -π (normalize后的结果)
+ */
+static inline double heading_angle_diff_safe(double heading_measured, 
+                                             double heading_reference,
+                                             double *out_normalized,
+                                             bool *out_is_large) {
+    double raw_diff = heading_measured - heading_reference;
+    double normalized_diff = normalize_angle(raw_diff);
+    
+    if (out_normalized) {
+        *out_normalized = normalized_diff;
+    }
+    if (out_is_large) {
+        *out_is_large = (fabs(raw_diff) > PI);
+    }
+    
+    return raw_diff;
 }
 
 /**

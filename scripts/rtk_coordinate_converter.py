@@ -119,8 +119,16 @@ class CoordinateConverter:
         x = dx_enu * math.sin(theta) + dy_enu * math.cos(theta)  # 车体前向
         y = -dx_enu * math.cos(theta) + dy_enu * math.sin(theta)  # 车体左向
 
-        # Step 4: 相对航向角
-        heading_relative = heading - self.origin_heading
+        # Step 4: 相对航向角（转换到ISO 8855逆时针定义）
+        # GPS中的heading是顺时针为正（北=0°，东=90°）
+        # ISO 8855中的heading是逆时针为正（前=0°，左=90°）
+        # 
+        # 因此相对heading应该取反：
+        # heading_relative = -(heading_GPS - origin_heading)
+        # = origin_heading - heading_GPS
+        #
+        # 这样当车向左转时（heading_GPS减小），heading_relative为正（ISO 8855左转为正）
+        heading_relative = self.origin_heading - heading
         # 规范化到 [-180, 180]
         while heading_relative > 180:
             heading_relative -= 360

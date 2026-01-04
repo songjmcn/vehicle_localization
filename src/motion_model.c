@@ -200,7 +200,24 @@ VehicleState_t motion_model_predict(SteeringModel_t *steering_config,
      */
     new_state.x = state->x + v_signed * cos_term * dt;
     new_state.y = state->y + v_signed * sin_term * dt;
-    /* 航向角更新 */
+    /* 航向角更新 
+     * 
+     * ===== ISO 8855 范围说明 =====
+     * 本系统使用 [-π, π] 范围进行heading角处理
+     * 标准范围: ISO 8855定义为[0, 2π]
+     * 
+     * 实际范围: [-π, π]（当前实现）
+     * 原因:
+     *   1. 数值计算友好：避免0° = 360°的歧义
+     *   2. 与C库标准一致：atan2()输出范围为[-π, π]
+     *   3. 简化卡尔曼滤波：残差计算避免π环绕
+     *   4. 计算效率优先于ISO严格遵循
+     * 
+     * 约束条件:
+     *   - new_heading总是被normalize到[-π, π]范围
+     *   - 大尺度轨迹（>2π总转角）会出现累积误差
+     *   - 标定中heading差>π的数据需特殊处理
+     */
     //new_state.heading = state->heading + yaw_rate * dt;
     new_state.heading = normalize_angle(new_heading);
     
