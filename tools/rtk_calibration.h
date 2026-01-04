@@ -234,4 +234,82 @@ uint32_t rtk_calibration_get_steering_gain_point_count(const RTKCalibrationManag
  */
 void rtk_calibration_clear_steering_gain(RTKCalibrationManager_t *manager);
 
+/* ============================================================================
+ * Phase 2 (P1) 独立的标定系统 - 完全与定位代码分离
+ * ============================================================================ */
+
+/**
+ * @brief RTK标定系统（独立运行）
+ * 
+ * 这是一个独立的校准系统，不依赖于定位系统。
+ * 它完全管理标定过程，最后输出 CalibrationParams_t 结果。
+ * 定位系统通过外部接口获取校准参数。
+ */
+typedef struct {
+    RTKCalibrationManager_t manager;          /* 内部管理器 */
+    bool is_active;                           /* 是否处于活跃标定状态 */
+    CalibrationParams_t calibration_result;   /* 最后一次标定结果 */
+} RTKCalibrationSystem_t;
+
+/**
+ * @brief 初始化标定系统（独立）
+ * @param sys 标定系统指针
+ * @param max_calibration_points 最大标定点数
+ * @return 0成功，-1失败
+ */
+int rtk_calibration_system_init(RTKCalibrationSystem_t *sys, uint32_t max_calibration_points);
+
+/**
+ * @brief 添加标定点到独立系统
+ * @param sys 标定系统指针
+ * @param odometry_state 里程计状态
+ * @param rtk_state RTK状态
+ * @return 0成功，-1失败
+ */
+int rtk_calibration_system_add_point(RTKCalibrationSystem_t *sys,
+                                     const VehicleState_t *odometry_state,
+                                     const RTKData_t *rtk_state);
+
+/**
+ * @brief 计算标定参数（独立）
+ * @param sys 标定系统指针
+ * @return 0成功，-1失败
+ */
+int rtk_calibration_system_compute(RTKCalibrationSystem_t *sys);
+
+/**
+ * @brief 获取标定结果
+ * @param sys 标定系统指针
+ * @param result 输出的标定参数
+ * @return 0成功，-1失败
+ */
+int rtk_calibration_system_get_result(const RTKCalibrationSystem_t *sys,
+                                      CalibrationParams_t *result);
+
+/**
+ * @brief 清空标定数据
+ * @param sys 标定系统指针
+ */
+void rtk_calibration_system_clear(RTKCalibrationSystem_t *sys);
+
+/**
+ * @brief 释放标定系统资源
+ * @param sys 标定系统指针
+ */
+void rtk_calibration_system_free(RTKCalibrationSystem_t *sys);
+
+/**
+ * @brief 获取标定点数
+ * @param sys 标定系统指针
+ * @return 点数
+ */
+uint32_t rtk_calibration_system_get_point_count(const RTKCalibrationSystem_t *sys);
+
+/**
+ * @brief 检查标定是否有效
+ * @param sys 标定系统指针
+ * @return true 有效，false 无效
+ */
+bool rtk_calibration_system_is_valid(const RTKCalibrationSystem_t *sys);
+
 #endif /* RTK_CALIBRATION_H */

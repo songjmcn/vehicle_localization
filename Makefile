@@ -3,28 +3,17 @@ CFLAGS = -Wall -Wextra -O2 -std=c99 -lm -Isrc -Itools
 LDFLAGS = -lm
 
 # 源文件
-SOURCES = src/motion_model.c src/kalman_filter.c src/steering_model.c src/wheel_odometry_processor.c tools/rtk_calibration.c src/localization_system.c example_usage.c
+SOURCES = src/motion_model.c src/kalman_filter.c src/steering_model.c src/wheel_odometry_processor.c src/steering_gain_calibration.c tools/rtk_calibration.c src/localization_system.c example_usage.c
 OBJECTS = $(SOURCES:.c=.o)
 TARGET = localization_example
 
 # 头文件
-HEADERS = src/localization_types.h src/motion_model.h src/kalman_filter.h src/steering_model.h src/wheel_odometry_processor.h tools/rtk_calibration.h src/localization_system.h
+HEADERS = src/localization_types.h src/motion_model.h src/kalman_filter.h src/steering_model.h src/wheel_odometry_processor.h src/steering_gain_calibration.h tools/rtk_calibration.h src/localization_system.h
 
 # 编译目标
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-	@echo "✓ Build successful: $@"
-
-%.o: %.c $(HEADERS)
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-clean:
-	rm -f $(OBJECTS) $(TARGET)
-	@echo "✓ Clean successful"
-
-run: $(TARGET)
 	./$(TARGET)
 
 # 编译单个模块（用于测试）

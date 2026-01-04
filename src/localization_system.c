@@ -451,44 +451,10 @@ DiagnosticsInfo_t localization_system_get_diagnostics(const LocalizationSystem_t
 }
 
 /**
- * @brief RTK离线标定 - 添加一个标定点
+ * @brief 手动设置校准参数
  * 
- * 用于离线标定过程，收集多个点然后计算标定参数。
- * 不在实时定位过程中进行RTK融合。
+ * 应用外部标定系统（如RTKCalibrationSystem_t）计算的校准参数
  */
-int localization_system_rtk_calibration_add_point(LocalizationSystem_t *sys,
-                                                  const VehicleState_t *odometry_state,
-                                                  const RTKData_t *rtk_state) {
-    if (!sys || !odometry_state || !rtk_state) {
-        return -1;
-    }
-    
-    /* 添加标定点 */
-    return rtk_calibration_add_point(&sys->rtk_calibration, 
-                                     odometry_state, 
-                                     rtk_state);
-}
-
-int localization_system_apply_rtk_calibration(LocalizationSystem_t *sys) {
-    if (!sys) {
-        return -1;
-    }
-    
-    /* 计算校准参数 */
-    CalibrationParams_t calibration;
-    if (rtk_calibration_compute(&sys->rtk_calibration, &calibration) != 0) {
-        return -1;
-    }
-    
-    /* 保存校准参数 */
-    sys->calibration = calibration;
-    
-    /* 更新卡尔曼滤波器中的校准参数 */
-    sys->kalman_filter.calibration = calibration;
-    
-    return 0;
-}
-
 void localization_system_set_calibration(LocalizationSystem_t *sys,
                                         const CalibrationParams_t *calibration) {
     if (!sys || !calibration) {
@@ -513,7 +479,6 @@ void localization_system_reset(LocalizationSystem_t *sys,
     }
     
     kalman_filter_reset(&sys->kalman_filter, &reset_state);
-    rtk_calibration_clear(&sys->rtk_calibration);
     memset(&sys->diagnostics, 0, sizeof(sys->diagnostics));
     sys->operation_timestamp = 0;
 }
@@ -523,7 +488,6 @@ void localization_system_free(LocalizationSystem_t *sys) {
         return;
     }
     
-    rtk_calibration_free(&sys->rtk_calibration);
     sys->is_initialized = false;
 }
 

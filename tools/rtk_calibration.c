@@ -933,3 +933,132 @@ void rtk_calibration_clear_steering_gain(RTKCalibrationManager_t *manager) {
     manager->steering_gain_valid = false;
 }
 
+/* ============================================================================
+ * Phase 2 (P1) 独立的标定系统 - 实现部分
+ * ============================================================================ */
+
+int rtk_calibration_system_init(RTKCalibrationSystem_t *sys, uint32_t max_calibration_points) {
+    if (!sys || max_calibration_points == 0) {
+        return -1;
+    }
+    
+    /* 初始化内部管理器 */
+    if (rtk_calibration_init(&sys->manager, max_calibration_points) != 0) {
+        return -1;
+    }
+    
+    /* 设置默认状态 */
+    sys->is_active = true;
+    
+    /* 初始化结果为默认值 */
+    memset(&sys->calibration_result, 0, sizeof(sys->calibration_result));
+    sys->calibration_result.wheel_calibration_factor = 1.0;
+    sys->calibration_result.steering_angle_offset = 0.0;
+    sys->calibration_result.steering_angle_gain = 1.0;
+    sys->calibration_result.imu_accel_scale_x = 1.0;
+    sys->calibration_result.imu_accel_scale_y = 1.0;
+    sys->calibration_result.imu_lateral_accel_scale = 1.0;
+    
+    return 0;
+}
+
+int rtk_calibration_system_add_point(RTKCalibrationSystem_t *sys,
+                                     const VehicleState_t *odometry_state,
+                                     const RTKData_t *rtk_state) {
+    if (!sys || !odometry_state || !rtk_state || !sys->is_active) {
+        return -1;
+    }
+    
+    /* 同时添加到标准标定和转向增益标定 */
+    /* 添加标准标定点 */
+    if (rtk_calibration_add_point(&sys->manager, odometry_state, rtk_state) != 0) {
+        return -1;
+    }
+    
+    /* 添加转向增益标定点（速度和方向满足条件时） */
+    double velocity = fabs(odometry_state->v);
+    if (velocity > 0.5) {  /* 速度大于0.5 m/s时才进行转向增益标定 */
+        rtk_calibration_add_steering_gain_point(&sys->manager, odometry_state, rtk_state);
+    }
+    
+    return 0;
+}
+
+int rtk_calibration_system_compute(RTKCalibrationSystem_t *sys) {
+    if (!sys || !sys->is_active) {
+        return -1;
+    }
+    
+    /* 计算标准校准参数 */
+    if (rtk_calibration_compute(&sys->manager, &sys->calibration_result) != 0) {
+        return -1;
+    }
+    
+    /* 如果点数足够，也计算转向增益 */
+    if (rtk_calibration_get_steering_gain_point_count(&sys->manager) >= 10) {
+        if (rtk_calibration_compute_steering_gain(&sys->manager) != 0) {
+            /* 转向增益计算失败，但不影响其他校准参数 */
+            return -1;
+        }
+        
+        /* 更新结果中的转向增益 */
+        sys->calibration_result.steering_angle_gain = 
+            rtk_calibration_get_steering_gain(&sys->manager);
+    }
+    
+    return 0;
+}
+
+int rtk_calibration_system_get_result(const RTKCalibrationSystem_t *sys,
+                                      CalibrationParams_t *result) {
+    if (!sys || !result) {
+        return -1;
+    }
+    
+    *result = sys->calibration_result;
+    return 0;
+}
+
+void rtk_calibration_system_clear(RTKCalibrationSystem_t *sys) {
+    if (!sys) {
+        return;
+    }
+    
+    rtk_calibration_clear(&sys->manager);
+    rtk_calibration_clear_steering_gain(&sys->manager);
+    
+    /* 重置结果为默认值 */
+    memset(&sys->calibration_result, 0, sizeof(sys->calibration_result));
+    sys->calibration_result.wheel_calibration_factor = 1.0;
+    sys->calibration_result.steering_angle_offset = 0.0;
+    sys->calibration_result.steering_angle_gain = 1.0;
+    sys->calibration_result.imu_accel_scale_x = 1.0;
+    sys->calibration_result.imu_accel_scale_y = 1.0;
+    sys->calibration_result.imu_lateral_accel_scale = 1.0;
+}
+
+void rtk_calibration_system_free(RTKCalibrationSystem_t *sys) {
+    if (!sys) {
+        return;
+    }
+    
+    rtk_calibration_free(&sys->manager);
+    sys->is_active = false;
+}
+
+uint32_t rtk_calibration_system_get_point_count(const RTKCalibrationSystem_t *sys) {
+    if (!sys) {
+        return 0;
+    }
+    
+    return sys->manager.calibration_count;
+}
+
+bool rtk_calibration_system_is_valid(const RTKCalibrationSystem_t *sys) {
+    if (!sys) {
+        return false;
+    }
+    
+    return sys->is_active && rtk_calibration_is_valid(&sys->manager);
+}
+
