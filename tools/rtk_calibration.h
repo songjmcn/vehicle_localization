@@ -23,6 +23,15 @@ typedef struct {
     double max_position_error;
     double max_heading_error;
     
+    /* 加权最小二乘法统计 */
+    uint32_t outlier_count;
+    double r_squared;  /* 拟合优度 R² */
+    double weighted_std_dev;  /* 加权残差标准差 */
+    
+    /* 数据质量统计 */
+    uint32_t rejected_count;  /* 被拒绝的点数（验证失败） */
+    uint32_t low_quality_skip;  /* 因质量低而跳过的点数 */
+    
     /* 校准参数 */
     CalibrationParams_t estimated_calibration;
     bool calibration_valid;
@@ -46,6 +55,23 @@ int rtk_calibration_init(RTKCalibrationManager_t *manager, uint32_t max_points);
 int rtk_calibration_add_point(RTKCalibrationManager_t *manager,
                               const VehicleState_t *odometry_state,
                               const RTKData_t *rtk_state);
+
+/**
+ * @brief 添加标定点（带数据验证）
+ * 
+ * 验证项：
+ * 1. 时间同步检查：±50ms时间差容限
+ * 2. 速度一致性检查：最大0.5 m/s差值
+ * 3. 轨迹连续性检查：最大10m跳跃
+ * 
+ * @param manager 管理器指针
+ * @param odometry_state 里程计估计的状态
+ * @param rtk_state RTK测量的状态
+ * @return 0成功，-1验证失败，-2其他失败
+ */
+int rtk_calibration_add_point_with_validation(RTKCalibrationManager_t *manager,
+                                              const VehicleState_t *odometry_state,
+                                              const RTKData_t *rtk_state);
 
 /**
  * @brief 计算校准参数（基于累积的标定点）

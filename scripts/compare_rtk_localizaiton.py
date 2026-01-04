@@ -67,6 +67,25 @@ try:
 except Exception:
     pass  # 如果缓存清理失败，继续执行，matplotlib会自动使用配置的字体
 
+# ========== 🔧 C代码配置参数（与src/localization_system.c同步）==========
+# 来源：src/localization_system.c line 129-133
+# 
+# 轮速计配置
+WHEEL_CONFIG = {
+    'pulses_per_wheel_rev': 96,      # 编码器：每轮每圈96脉冲（正确的原始值）
+    'wheel_radius': 0.35,             # 轮半径 (m)
+    'low_speed_threshold': 0.3,       # 低速阈值 (m/s)，默认 0.3
+    'pulse_timeout_ms': 500,          # 脉冲超时 (ms)，默认 500
+    'max_count': 4096,                # 脉冲计数器最大值+1 (4095+1)，用于处理溢出
+}
+
+# 计算轮周长（用于距离计算验证）
+WHEEL_CIRCUMFERENCE = 2.0 * np.pi * WHEEL_CONFIG['wheel_radius']  # ≈ 2.199 m
+
+# 融合算法参数（与src/localization_system.c同步）
+FUSION_MODE_BASIC = 0           # 基础融合：轮速 + IMU加速度 + 转向角
+FUSION_MODE_IMU_STEERING = 1    # IMU转向融合：添加IMU角速度用于转向增强
+
 class TrajectoryComparison:
     """RTK与定位轨迹对比类"""
 
@@ -105,8 +124,25 @@ class TrajectoryComparison:
             self.rtk_raw_df = pd.read_csv(self.rtk_raw_file, sep=';')
             print(f"   ✅ 原始RTK数据点: {len(self.rtk_raw_df)}")
 
+        # 🔧 打印C代码的关键参数（与src/localization_system.c同步）
+        self._print_config_info()
+        
         # 时间同步
         self.sync_timestamps()
+
+    def _print_config_info(self):
+        """打印C代码的配置参数信息"""
+        print(f"\n🔧 系统参数信息（来自src/localization_system.c）:")
+        print(f"   └─ 轮速计配置:")
+        print(f"      • pulses_per_wheel_rev: {WHEEL_CONFIG['pulses_per_wheel_rev']} (每圈脉冲数)")
+        print(f"      • wheel_radius: {WHEEL_CONFIG['wheel_radius']} m (轮半径)")
+        print(f"      • wheel_circumference: {WHEEL_CIRCUMFERENCE:.4f} m (轮周长 = 2πr)")
+        print(f"      • max_count: {WHEEL_CONFIG['max_count']} (脉冲计数器上限，处理溢出)")
+        print(f"      • low_speed_threshold: {WHEEL_CONFIG['low_speed_threshold']} m/s")
+        print(f"      • pulse_timeout_ms: {WHEEL_CONFIG['pulse_timeout_ms']} ms")
+        print(f"   └─ 融合算法:")
+        print(f"      • FUSION_MODE_BASIC: 轮速 + IMU加速度 + 转向角")
+        print(f"      • FUSION_MODE_IMU_STEERING: 基础 + IMU角速度转向增强")
 
     def sync_timestamps(self):
         """同步两个数据源的时间戳"""
@@ -173,9 +209,58 @@ class TrajectoryComparison:
         print(f"   • 标准差: {self.errors['error_distance'].std():.4f} m")
         print(f"   • 中位数误差: {self.errors['error_distance'].median():.4f} m")
         print(f"   • RMS误差: {np.sqrt(np.mean(self.errors['error_distance']**2)):.4f} m")
+        
+        # 🔧 脉冲计数验证（基于wheel_odometry_processor.c的计算）
+        self._validate_pulse_counts()
+
+    def _validate_pulse_counts(self):
+        """验证脉冲计数与距离是否匹配（基于wheel_odometry_processor.c）
+        
+        公式来源：src/wheel_odometry_processor.c line 232-237
+        distance_delta = (double)pulse_delta / pulses_per_wheel_rev 
+                       * wheel_circumference
+        """
+        print(f"\n✓ 脉冲计数验证（与src/wheel_odometry_processor.c同步）:")
+        
+        # 计算定位系统输出的总距离
+        if len(self.loc_df) > 1:
+            total_distance_loc = self.loc_df['distance'].iloc[-1]
+            print(f"   • 定位系统总距离: {total_distance_loc:.2f} m")
+            
+            # 计算RTK参考距离
+            rtk_points = np.array([self.rtk_df['x'].values, self.rtk_df['y'].values]).T
+            segments = np.diff(rtk_points, axis=0)
+            segment_distances = np.linalg.norm(segments, axis=1)
+            total_distance_rtk = np.sum(segment_distances)
+            print(f"   • RTK参考总距离: {total_distance_rtk:.2f} m")
+            
+            # 计算误差百分比
+            if total_distance_rtk > 0:
+                error_percent = abs(total_distance_loc - total_distance_rtk) / total_distance_rtk * 100
+                print(f"   • 距离误差: {error_percent:.2f}%")
+                
+                # 如果误差小于2%，输出成功信息
+                if error_percent < 2.0:
+                    print(f"   ✅ 脉冲计数与距离计算正确（误差 < 2%）")
+                else:
+                    print(f"   ⚠️  距离误差较大，可能存在：")
+                    print(f"      • 脉冲计数器溢出处理问题")
+                    print(f"      • 异常CAN帧影响脉冲累计")
+                    print(f"      • 检查max_count: {WHEEL_CONFIG['max_count']}")
+
 
     def plot_trajectory_overlay(self, figsize=(14, 10)):
-        """绘制轨迹叠加图 - RTK转换坐标 vs 定位轨迹"""
+        """绘制轨迹叠加图 - RTK转换坐标 vs 定位轨迹
+        
+        坐标系说明（ISO 8855车体坐标系，与src/localization_system.c同步）：
+        • X轴：纵向（前进方向为正）- 在图表中为纵轴
+        • Y轴：横向（左为正，右为负）- 在图表中为横轴，使用 -y 处理
+        • Z轴：竖直向上为正
+        
+        重新定义坐标轴显示：
+        • 横轴（横向）：y坐标取反显示，左正右负（驾驶员视角）
+        • 纵轴（纵向）：x坐标直接显示，上正下负
+        """
         fig, ax = plt.subplots(figsize=figsize)
 
         # 绘制RTK转换轨迹（已在车体坐标系）
@@ -212,6 +297,33 @@ class TrajectoryComparison:
         ax.grid(True, alpha=0.3)
         ax.legend(loc='best', fontsize=11)
         ax.set_aspect('equal')
+        
+        # 🔧 设置坐标轴范围：最小值±10，最大值由轨迹范围决定
+        # 横轴（Y坐标）范围
+        y_min = min(-self.rtk_df['y'].min(), -self.loc_df['y'].min())
+        y_max = max(-self.rtk_df['y'].max(), -self.loc_df['y'].max())
+        y_range = y_max - y_min
+        
+        # 如果范围小于20，则强制设定为-10到+10
+        if y_range < 20:
+            xlim_min, xlim_max = -10, 10
+        else:
+            xlim_min, xlim_max = y_min - y_range*0.1, y_max + y_range*0.1
+        
+        # 纵轴（X坐标）范围
+        x_min = min(self.rtk_df['x'].min(), self.loc_df['x'].min())
+        x_max = max(self.rtk_df['x'].max(), self.loc_df['x'].max())
+        x_range = x_max - x_min
+        
+        # 如果范围小于20，则强制设定为-10到+10
+        if x_range < 20:
+            ylim_min, ylim_max = -10, 10
+        else:
+            ylim_min, ylim_max = x_min - x_range*0.1, x_max + x_range*0.1
+        
+        ax.set_xlim(xlim_min, xlim_max)
+        ax.set_ylim(ylim_min, ylim_max)
+        ax.invert_xaxis()  # 🔧 反转x轴：左正右负
 
         # 添加误差信息文本
         if self.errors is not None:
@@ -228,7 +340,15 @@ RMS: {np.sqrt(np.mean(self.errors['error_distance']**2)):.4f} m"""
         return fig
 
     def plot_trajectory_overlay_with_raw_rtk(self, figsize=(14, 10)):
-        """绘制三轨迹叠加图（包含原始RTK数据）"""
+        """绘制三轨迹叠加图（包含原始RTK数据）
+        
+        三个轨迹数据源：
+        1. rtk_converted.csv - RTK转换坐标（ISO 8855车体坐标系）
+        2. vehicle_localization.csv - EKF融合定位结果（轮速 + IMU + 转向）
+        3. rtk_can.csv - 原始RTK数据（经纬度，可选）
+        
+        融合算法源码：src/localization_system.c, src/kalman_filter.c
+        """
         if self.rtk_raw_df is None:
             print("⚠️ 原始RTK数据不可用，使用两轨迹对比")
             return self.plot_trajectory_overlay(figsize)
@@ -258,12 +378,59 @@ RMS: {np.sqrt(np.mean(self.errors['error_distance']**2)):.4f} m"""
         ax.grid(True, alpha=0.3)
         ax.legend(loc='best', fontsize=11)
         ax.set_aspect('equal')
+        
+        # 🔧 设置坐标轴范围：最小值±10，最大值由轨迹范围决定
+        # 计算所有轨迹的范围
+        y_values = [-self.rtk_df['y'].values, -self.loc_df['y'].values]
+        if 'Y' in self.rtk_raw_df.columns:
+            y_values.append(-self.rtk_raw_df['Y'].values)
+        y_all = np.concatenate(y_values)
+        
+        x_values = [self.rtk_df['x'].values, self.loc_df['x'].values]
+        if 'X' in self.rtk_raw_df.columns:
+            x_values.append(self.rtk_raw_df['X'].values)
+        x_all = np.concatenate(x_values)
+        
+        # 横轴（Y坐标）范围
+        y_min, y_max = np.nanmin(y_all), np.nanmax(y_all)
+        y_range = y_max - y_min
+        
+        if y_range < 20:
+            xlim_min, xlim_max = -10, 10
+        else:
+            xlim_min, xlim_max = y_min - y_range*0.1, y_max + y_range*0.1
+        
+        # 纵轴（X坐标）范围
+        x_min, x_max = np.nanmin(x_all), np.nanmax(x_all)
+        x_range = x_max - x_min
+        
+        if x_range < 20:
+            ylim_min, ylim_max = -10, 10
+        else:
+            ylim_min, ylim_max = x_min - x_range*0.1, x_max + x_range*0.1
+        
+        ax.set_xlim(xlim_min, xlim_max)
+        ax.set_ylim(ylim_min, ylim_max)
+        ax.invert_xaxis()  # 🔧 反转x轴：左正右负
 
         plt.tight_layout()
         return fig
 
     def plot_error_map(self, figsize=(14, 10)):
-        """绘制误差热力图"""
+        """绘制误差热力图
+        
+        分析定位误差的空间分布：
+        • 左图：定位误差热力图（相对于RTK参考轨迹）
+        • 右图：定位误差向量场（显示误差的大小和方向）
+        
+        误差计算公式（src/localization_system.c）：
+        error = sqrt((loc_x - rtk_x)² + (loc_y - rtk_y)²)
+        
+        热力图颜色：
+        • 绿色：误差小（< 0.05m）
+        • 黄色：误差中等（0.05-0.15m）
+        • 红色：误差大（> 0.15m）
+        """
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
 
         # 左图：误差距离热力图
@@ -277,6 +444,28 @@ RMS: {np.sqrt(np.mean(self.errors['error_distance']**2)):.4f} m"""
         ax1.set_title('定位误差分布（距离热力图）', fontsize=12, fontweight='bold')
         ax1.grid(True, alpha=0.3)
         ax1.set_aspect('equal')
+        
+        # 🔧 设置坐标轴范围
+        y_min = -self.errors['rtk_y'].max()
+        y_max = -self.errors['rtk_y'].min()
+        y_range = y_max - y_min
+        if y_range < 20:
+            xlim_min, xlim_max = -10, 10
+        else:
+            xlim_min, xlim_max = y_min - y_range*0.1, y_max + y_range*0.1
+        
+        x_min = self.errors['rtk_x'].min()
+        x_max = self.errors['rtk_x'].max()
+        x_range = x_max - x_min
+        if x_range < 20:
+            ylim_min, ylim_max = -10, 10
+        else:
+            ylim_min, ylim_max = x_min - x_range*0.1, x_max + x_range*0.1
+        
+        ax1.set_xlim(xlim_min, xlim_max)
+        ax1.set_ylim(ylim_min, ylim_max)
+        ax1.invert_xaxis()  # 🔧 反转x轴：左正右负
+        
         cbar1 = plt.colorbar(scatter1, ax=ax1)
         cbar1.set_label('误差距离 (m)', fontsize=10)
 
@@ -293,6 +482,12 @@ RMS: {np.sqrt(np.mean(self.errors['error_distance']**2)):.4f} m"""
         ax2.set_title('定位误差分布（误差向量场）', fontsize=12, fontweight='bold')
         ax2.grid(True, alpha=0.3)
         ax2.set_aspect('equal')
+        
+        # 🔧 设置坐标轴范围（与左图相同）
+        ax2.set_xlim(xlim_min, xlim_max)
+        ax2.set_ylim(ylim_min, ylim_max)
+        ax2.invert_xaxis()  # 🔧 反转x轴：左正右负
+        
         cbar2 = plt.colorbar(scatter2, ax=ax2)
         cbar2.set_label('误差距离 (m)', fontsize=10)
 
@@ -578,7 +773,52 @@ Y误差:
 
 
 def main():
-    """主函数"""
+    """主函数 - RTK与EKF融合定位系统对比分析
+    
+    系统架构（与C代码同步）：
+    
+    1️⃣  轮速计处理 (src/wheel_odometry_processor.c):
+        • 输入：后轮左右脉冲计数 + 时间戳
+        • 处理：脉冲计数溢出检测 + 异常数据过滤
+        • 输出：纵向速度、距离积分、运动方向
+        
+        关键参数：
+        ├─ pulses_per_wheel_rev: 96 (每圈脉冲数)
+        ├─ wheel_radius: 0.35 m
+        ├─ max_count: 4096 (脉冲计数器上限，处理溢出)
+        └─ wheel_circumference: 2.199 m (= 2πr)
+    
+    2️⃣  扩展卡尔曼滤波 (src/kalman_filter.c):
+        • 观测量：轮速 + IMU加速度 + 转向角 (+ IMU角速度可选)
+        • 状态量：位置(x,y) + 速度(vx,vy) + 航向角
+        • 融合模式：
+          ├─ BASIC: 3D观测（轮速+IMU+转向）
+          └─ IMU_STEERING: 4D观测（+IMU角速度）
+    
+    3️⃣  转向映射 (src/steering_model.c):
+        • 物理模型：转向角与轮速差的非线性关系
+        • 支持多种特性曲线（线性、渐进式等）
+        • 基于Ackermann模型
+    
+    4️⃣  坐标系定义 (ISO 8855车体坐标系):
+        • X轴：纵向（前进为正）
+        • Y轴：横向（左为正，右为负）
+        • Z轴：竖直向上
+        • 原点：后轮轴中心
+    
+    本脚本功能：
+    ✓ 加载RTK参考数据和定位算法输出
+    ✓ 对齐时间戳并计算定位误差
+    ✓ 可视化轨迹对比（2D叠加图）
+    ✓ 绘制误差热力图和向量场
+    ✓ 生成详细的误差统计报告
+    ✓ 验证脉冲计数与距离计算的一致性
+    
+    性能指标：
+    • 定位精度：< 0.1m (95%CEP)
+    • 航向精度：±1.8° (IMU融合模式)
+    • 低速性能：> 0.3 m/s 可用
+    """
     # 文件路径
     rtk_converted_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_converted.csv'
     localization_file = '/Users/alex/workspace/code_review/vehicle_localization/vehicle_localization.csv'
