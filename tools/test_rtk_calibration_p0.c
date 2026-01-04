@@ -62,7 +62,7 @@ static void test_outlier_detection(void) {
     
     printf("  点数: %u\n", manager.calibration_count);
     printf("  离群点: %u\n", manager.outlier_count);
-    printf("  轮速计校准因子: %.6f (期望: ~1.2)\n", calibration.wheel_calibration_factor);
+    printf("  轮速计校准因子: %.6f (期望: ~1.0，离群点被检测和排除)\n", calibration.wheel_calibration_factor);
     printf("  R²: %.6f\n", manager.r_squared);
     printf("  加权标准差: %.6f\n", manager.weighted_std_dev);
     
@@ -76,10 +76,11 @@ static void test_outlier_detection(void) {
         printf("    段 %d: odo=%.2f, rtk=%.2f, 比例=%.2f\n", i, odo_dist, rtk_dist, odo_dist > 0.01 ? odo_dist/rtk_dist : 0);
     }
     
-    /* 验证：校准因子应接近1.2（包含所有点的简单均值） */
-    assert(fabs(calibration.wheel_calibration_factor - 1.2) < 0.1);
-    /* 注意：离群点检测需要进一步优化，目前跳过该断言 */
-    /* assert(manager.outlier_count == 1); */
+    /* 验证：改进的MAD-based离群点检测应该检测出1个离群点 */
+    assert(manager.outlier_count == 1);
+    
+    /* 验证：校准因子应接近1.0（因为离群点被排除） */
+    assert(fabs(calibration.wheel_calibration_factor - 1.0) < 0.05);
     
     rtk_calibration_free(&manager);
     printf("  ✓ PASS\n");
@@ -403,11 +404,173 @@ static void test_clear_function(void) {
 }
 
 /**
+ * 测试8：改进的离群点检测（MAD方法）
+ */
+static void test_improved_outlier_detection(void) {
+    printf("\n=== Test 8: Improved Outlier Detection (MAD-based) ===\n");
+    
+    RTKCalibrationManager_t manager;
+    assert(rtk_calibration_init(&manager, 20) == 0);
+    
+    VehicleState_t odo_state;
+    RTKData_t rtk_state;
+    
+    memset(&odo_state, 0, sizeof(VehicleState_t));
+    memset(&rtk_state, 0, sizeof(RTKData_t));
+    rtk_state.quality = 5;  /* 高质量 */
+    
+    /* 添加15个正常点，轮速计校准因子=1.0 */
+    for (int i = 0; i < 15; i++) {
+        odo_state.x = (float)i;
+        odo_state.y = 0.0;
+        odo_state.v = 1.0f;
+        odo_state.heading = 0.0;
+        odo_state.steering_angle = 0.0;
+        
+        rtk_state.x = (double)i;
+        rtk_state.y = 0.0;
+        
+        assert(rtk_calibration_add_point(&manager, &odo_state, &rtk_state) == 0);
+    }
+    
+    /* 添加2个极端离群点 */
+    for (int i = 0; i < 2; i++) {
+        odo_state.x = (float)(100 + i * 50);  /* 极端异常值 */
+        odo_state.y = 0.0;
+        rtk_state.x = (double)(15 + i);  /* 正常轨迹 */
+        rtk_state.y = 0.0;
+        
+        assert(rtk_calibration_add_point(&manager, &odo_state, &rtk_state) == 0);
+    }
+    
+    /* 计算校准 */
+    CalibrationParams_t calibration;
+    memset(&calibration, 0, sizeof(calibration));
+    assert(rtk_calibration_compute(&manager, &calibration) == 0);
+    
+    printf("  数据点数: %u\n", manager.calibration_count);
+    printf("  检测到的离群点: %u (期望: 2)\n", manager.outlier_count);
+    printf("  轮速计校准因子: %.6f (期望: ~1.0，忽略离群点)\n", 
+           calibration.wheel_calibration_factor);
+    printf("  R²: %.6f\n", manager.r_squared);
+    
+    /* 验证：应该检测出2个离群点 */
+    assert(manager.outlier_count == 2);
+    
+    /* 验证：校准因子应接近1.0（因为离群点被排除了） */
+    assert(fabs(calibration.wheel_calibration_factor - 1.0) < 0.05);
+    
+    rtk_calibration_free(&manager);
+    printf("  ✓ PASS\n");
+}
+
+/**
+ * 测试9：权重优化
+ */
+static void test_weight_optimization(void) {
+    printf("\n=== Test 9: Weight Optimization (Quality & Trajectory) ===\n");
+    
+    RTKCalibrationManager_t manager;
+    assert(rtk_calibration_init(&manager, 30) == 0);
+    
+    VehicleState_t odo_state;
+    RTKData_t rtk_state;
+    
+    memset(&odo_state, 0, sizeof(VehicleState_t));
+    memset(&rtk_state, 0, sizeof(RTKData_t));
+    
+    /* 场景：
+     * - 前10个点：高质量(5)，轻微误差(+1%)
+     * - 中间10个点：低质量(2)，严重误差(+10%)
+     * - 后10个点：高质量(5)，轻微误差(+1%)
+     * 期望：高质量点应更好地主导拟合，校准因子应接近1.01
+     */
+    
+    for (int i = 0; i < 30; i++) {
+        double dist = (double)i;
+        double odo_factor = (i < 10 || i >= 20) ? 1.01 : 1.10;  /* 高/低质量段的误差 */
+        uint8_t quality = (i < 10 || i >= 20) ? 5 : 2;
+        
+        odo_state.x = (float)(dist * odo_factor);
+        odo_state.y = 0.0;
+        odo_state.v = 1.0f;
+        odo_state.heading = 0.0;
+        odo_state.steering_angle = 0.0;
+        
+        rtk_state.x = dist;
+        rtk_state.y = 0.0;
+        rtk_state.quality = quality;
+        
+        assert(rtk_calibration_add_point(&manager, &odo_state, &rtk_state) == 0);
+    }
+    
+    CalibrationParams_t calibration;
+    memset(&calibration, 0, sizeof(calibration));
+    assert(rtk_calibration_compute(&manager, &calibration) == 0);
+    
+    printf("  数据点数: %u\n", manager.calibration_count);
+    printf("  轮速计校准因子: %.6f (期望: ~1.02, 受高质量点主导)\n", 
+           calibration.wheel_calibration_factor);
+    printf("  离群点数: %u\n", manager.outlier_count);
+    
+    /* 验证：校准因子应偏向高质量点的1.01，而不是低质量点的1.10 */
+    assert(calibration.wheel_calibration_factor < 1.05);
+    
+    rtk_calibration_free(&manager);
+    printf("  ✓ PASS\n");
+}
+
+/**
+ * 测试10：诊断输出
+ */
+static void test_diagnostics_output(void) {
+    printf("\n=== Test 10: Diagnostics Output ===\n");
+    
+    RTKCalibrationManager_t manager;
+    assert(rtk_calibration_init(&manager, 15) == 0);
+    
+    VehicleState_t odo_state;
+    RTKData_t rtk_state;
+    
+    memset(&odo_state, 0, sizeof(VehicleState_t));
+    memset(&rtk_state, 0, sizeof(RTKData_t));
+    
+    /* 添加混合质量的数据 */
+    for (int i = 0; i < 15; i++) {
+        odo_state.x = (float)i;
+        odo_state.y = 0.0;
+        odo_state.v = 1.0f;
+        odo_state.heading = 0.0;
+        odo_state.steering_angle = 0.0;
+        
+        rtk_state.x = (double)i;
+        rtk_state.y = 0.0;
+        /* 变化质量 */
+        rtk_state.quality = (i < 5) ? 5 : (i < 10) ? 3 : 2;
+        
+        assert(rtk_calibration_add_point(&manager, &odo_state, &rtk_state) == 0);
+    }
+    
+    CalibrationParams_t calibration;
+    memset(&calibration, 0, sizeof(calibration));
+    assert(rtk_calibration_compute(&manager, &calibration) == 0);
+    
+    /* 调用诊断输出 */
+    rtk_calibration_print_diagnostics(&manager);
+    
+    /* 验证基本状态 */
+    assert(manager.calibration_count == 15);
+    
+    rtk_calibration_free(&manager);
+    printf("  ✓ PASS\n");
+}
+
+/**
  * 主测试函数
  */
 int main(void) {
     printf("=====================================\n");
-    printf("RTK Calibration Phase 1 (P0) Tests\n");
+    printf("RTK Calibration Phase 1 (P0+) Tests\n");
     printf("=====================================\n");
     
     test_outlier_detection();
@@ -417,9 +580,12 @@ int main(void) {
     test_validation_low_quality_skip();
     test_fit_quality_metrics();
     test_clear_function();
+    test_improved_outlier_detection();
+    test_diagnostics_output();
+    test_weight_optimization();
     
     printf("\n=====================================\n");
-    printf("✓ All 7 tests PASSED\n");
+    printf("✓ All 10 tests PASSED\n");
     printf("=====================================\n");
     
     return 0;

@@ -127,4 +127,17 @@ void rtk_calibration_online_update(RTKCalibrationManager_t *manager,
                                    const RTKData_t *rtk_state,
                                    double alpha);
 
+/**
+ * @brief 打印诊断信息（用于调试和验证算法）
+ * 
+ * 输出包含：
+ * - 数据统计：点数、离群点数、拒绝点数
+ * - 权重分析：权重分布、质量等级统计
+ * - 拟合结果：校准因子、R²、残差标准差
+ * - 迭代过程：初始估计、优化步骤
+ * 
+ * @param manager 管理器指针
+ */
+void rtk_calibration_print_diagnostics(const RTKCalibrationManager_t *manager);
+
 #endif /* RTK_CALIBRATION_H */

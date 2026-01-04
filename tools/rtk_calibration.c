@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdio.h>
 
 int rtk_calibration_init(RTKCalibrationManager_t *manager, uint32_t max_points) {
     if (!manager || max_points == 0) {
@@ -126,9 +127,83 @@ static double calculate_std_dev(const double *data, uint32_t count, double mean)
 }
 
 /**
- * @brief 标记离群点
+ * @brief 快速排序比较函数
+ */
+static int compare_doubles(const void *a, const void *b) {
+    double fa = *(const double *)a;
+    double fb = *(const double *)b;
+    if (fa < fb) return -1;
+    if (fa > fb) return 1;
+    return 0;
+}
+
+/**
+ * @brief 计算中位数绝对偏差（MAD）
  * 
- * 使用绝对残差阈值检测离群点：|residual| > max(3*std_dev, 5.0)
+ * MAD是一种鲁棒的离散度度量，对离群点不敏感
+ * 定义：MAD = median(|x_i - median(x)|)
+ * 
+ * @param data 输入数据数组
+ * @param count 数据个数
+ * @param median 输出的中位数
+ * @return 中位数绝对偏差值
+ */
+static double calculate_mad(const double *data, uint32_t count, double *median) {
+    if (count == 0) {
+        *median = 0.0;
+        return 0.0;
+    }
+    
+    /* 排序计算中位数 */
+    double *sorted = (double *)malloc(count * sizeof(double));
+    if (!sorted) {
+        *median = 0.0;
+        return 0.0;
+    }
+    
+    memcpy(sorted, data, count * sizeof(double));
+    qsort(sorted, count, sizeof(double), compare_doubles);
+    
+    if (count % 2 == 1) {
+        *median = sorted[count / 2];
+    } else {
+        *median = (sorted[count / 2 - 1] + sorted[count / 2]) / 2.0;
+    }
+    
+    /* 计算偏差 */
+    double *deviations = (double *)malloc(count * sizeof(double));
+    if (!deviations) {
+        free(sorted);
+        return 0.0;
+    }
+    
+    for (uint32_t i = 0; i < count; i++) {
+        deviations[i] = fabs(data[i] - *median);
+    }
+    
+    /* 排序偏差以找到中位数 */
+    qsort(deviations, count, sizeof(double), compare_doubles);
+    
+    double mad;
+    if (count % 2 == 1) {
+        mad = deviations[count / 2];
+    } else {
+        mad = (deviations[count / 2 - 1] + deviations[count / 2]) / 2.0;
+    }
+    
+    free(sorted);
+    free(deviations);
+    
+    return mad;
+}
+
+/**
+ * @brief 标记离群点（使用MAD-based方法）
+ * 
+ * 使用中位数绝对偏差（MAD）识别离群点：
+ * 阈值 = median(residuals) + 2.5 × MAD
+ * 
+ * 这种方法对极端离群点更鲁棒，因为不依赖标准差。
  * 返回有效的（非离群）点的个数
  */
 static uint32_t mark_outliers(const double *residuals, uint32_t count,
@@ -140,18 +215,22 @@ static uint32_t mark_outliers(const double *residuals, uint32_t count,
         return count;
     }
     
-    /* 计算统计量 */
-    double mean = calculate_mean(residuals, count);
-    double std_dev = calculate_std_dev(residuals, count, mean);
+    /* 使用MAD方法计算阈值 */
+    double median = 0.0;
+    double mad = calculate_mad(residuals, count, &median);
     
-    /* 离群点阈值：max(3*std_dev, 5.0) 米 */
-    /* 如果标准差为0（完美拟合），使用5米作为绝对阈值 */
-    double threshold = (std_dev > 1e-6) ? 3.0 * std_dev : 5.0;
-    threshold = (threshold > 5.0) ? threshold : 5.0;  /* 至少5米 */
+    /* 离群点检测阈值：|residual - median| > 2.5 * MAD */
+    /* MAD的常数倍数通常在2-3之间，这里使用2.5 */
+    double threshold = (mad > 1e-6) ? 2.5 * mad : 1.0;
+    
+    /* 如果MAD太小（完美拟合），使用至少2米作为绝对阈值 */
+    if (threshold < 2.0) {
+        threshold = 2.0;
+    }
     
     uint32_t valid_count = 0;
     for (uint32_t i = 0; i < count; i++) {
-        double residual_abs = fabs(residuals[i]);
+        double residual_abs = fabs(residuals[i] - median);
         if (residual_abs > threshold) {
             is_outlier[i] = true;
             (*outlier_count)++;
@@ -213,6 +292,7 @@ static double estimate_wheel_calibration_weighted(RTKCalibrationManager_t *manag
     /* 第一步：计算距离和权重 */
     double sum_odo = 0.0;
     double sum_rtk = 0.0;
+    double max_quality = 0.0;
     
     for (uint32_t i = 0; i < num_segments; i++) {
         RTKCalibrationPoint_t *prev = &manager->calibration_points[i];
@@ -228,13 +308,43 @@ static double estimate_wheel_calibration_weighted(RTKCalibrationManager_t *manag
         double rtk_dy = curr->rtk_state.y - prev->rtk_state.y;
         rtk_dists[i] = sqrt(rtk_dx * rtk_dx + rtk_dy * rtk_dy);
         
-        /* 权重 = 质量等级 × 轨迹长度 */
-        double quality_weight = (double)curr->rtk_state.quality / 5.0;
-        double trajectory_weight = (rtk_dists[i] > 0.01) ? rtk_dists[i] : 0.01;
-        weights[i] = quality_weight * trajectory_weight;
+        /* 记录最大质量值 */
+        if ((double)curr->rtk_state.quality > max_quality) {
+            max_quality = (double)curr->rtk_state.quality;
+        }
         
         sum_odo += odo_dists[i];
         sum_rtk += rtk_dists[i];
+    }
+    
+    /* 优化的权重计算：
+     * 1. 质量权重：相对于最大质量的二次幂（加重高质量数据）
+     * 2. 轨迹权重：使用log(1 + distance)避免过度加权长轨迹段
+     * 3. 测量不确定性权重：基于质量等级的不确定性估计
+     */
+    max_quality = (max_quality > 0) ? max_quality : 5.0;
+    
+    for (uint32_t i = 0; i < num_segments; i++) {
+        RTKCalibrationPoint_t *curr = &manager->calibration_points[i + 1];
+        
+        /* 质量权重：(quality/max_quality)^2，范围[0, 1]，高质量数据权重更高 */
+        double q_norm = (double)curr->rtk_state.quality / max_quality;
+        q_norm = (q_norm > 1.0) ? 1.0 : q_norm;
+        double quality_weight = q_norm * q_norm;  /* 二次函数强调高质量 */
+        
+        /* 轨迹权重：使用对数避免极长轨迹段主导拟合 */
+        double trajectory_weight = 1.0 + log(1.0 + rtk_dists[i]);
+        
+        /* 测量不确定性权重：低质量数据的测量噪声更大 */
+        double uncertainty_factor = 1.0 / (quality_weight + 0.1);  /* 避免分母为0 */
+        
+        /* 组合权重 */
+        weights[i] = quality_weight * trajectory_weight / uncertainty_factor;
+        
+        /* 确保权重有意义（非负且非零） */
+        if (weights[i] < 1e-6) {
+            weights[i] = 1e-6;
+        }
     }
     
     if (sum_rtk < 1e-6) {
@@ -478,7 +588,7 @@ int rtk_calibration_add_point_with_validation(RTKCalibrationManager_t *manager,
         return -2;
     }
     
-    /* 验证1：时间同步检查（±50ms容限） */
+    /* 验证1：时间同步检查与速度一致性 */
     if (manager->calibration_count > 0) {
         RTKCalibrationPoint_t *prev = &manager->calibration_points[manager->calibration_count - 1];
         
@@ -491,6 +601,14 @@ int rtk_calibration_add_point_with_validation(RTKCalibrationManager_t *manager,
         double velocity_change = fabs(odo_v - prev_odo_v);
         if (velocity_change > max_velocity_change) {
             /* 可能的时间同步问题 */
+            manager->rejected_count++;
+            return -1;
+        }
+        
+        /* 验证2：方向改变检测（转弯角度变化） */
+        double steering_change = fabs(odometry_state->steering_angle - prev->odometry_state.steering_angle);
+        /* 极端的转向角变化可能表示数据异常 */
+        if (steering_change > 1.0) {  /* 约57度 */
             manager->rejected_count++;
             return -1;
         }
@@ -512,6 +630,14 @@ int rtk_calibration_add_point_with_validation(RTKCalibrationManager_t *manager,
         double odo_jump = sqrt((odometry_state->x - prev->odometry_state.x) * (odometry_state->x - prev->odometry_state.x) +
                               (odometry_state->y - prev->odometry_state.y) * (odometry_state->y - prev->odometry_state.y));
         if (odo_jump > 10.0) {
+            manager->rejected_count++;
+            return -1;
+        }
+        
+        /* 验证4：轨迹段长度检查（避免微小偏移点） */
+        double min_segment_length = 0.01;  /* 最少1cm */
+        if (odo_jump < min_segment_length && rtk_jump < min_segment_length) {
+            /* 两个点几乎重合，可能是重复或错误的数据 */
             manager->rejected_count++;
             return -1;
         }
@@ -564,4 +690,63 @@ void rtk_calibration_online_update(RTKCalibrationManager_t *manager,
     manager->estimated_calibration.steering_angle_offset = 
         (1.0 - alpha) * manager->estimated_calibration.steering_angle_offset +
         alpha * heading_error;
+}
+
+void rtk_calibration_print_diagnostics(const RTKCalibrationManager_t *manager) {
+    if (!manager) {
+        return;
+    }
+    
+    printf("\n========== RTK 标定诊断信息 ==========\n");
+    
+    /* 数据统计 */
+    printf("【数据统计】\n");
+    printf("  总点数: %u\n", manager->calibration_count);
+    printf("  离群点数: %u\n", manager->outlier_count);
+    printf("  拒绝点数: %u\n", manager->rejected_count);
+    printf("  低质量跳过: %u\n", manager->low_quality_skip);
+    printf("  有效数据率: %.1f%%\n", 
+           manager->calibration_count > 0 ? 
+           (100.0 * (manager->calibration_count - manager->outlier_count) / manager->calibration_count) : 0.0);
+    
+    /* 误差统计 */
+    printf("\n【误差统计】\n");
+    printf("  最大位置误差: %.3f m\n", manager->max_position_error);
+    printf("  最大航向角误差: %.4f rad (%.2f°)\n", 
+           manager->max_heading_error, manager->max_heading_error * 180.0 / 3.14159);
+    
+    if (manager->calibration_count > 0) {
+        double avg_x_error = manager->cumulative_x_error / manager->calibration_count;
+        double avg_y_error = manager->cumulative_y_error / manager->calibration_count;
+        double avg_heading_error = manager->cumulative_heading_error / manager->calibration_count;
+        printf("  平均X误差: %.3f m\n", avg_x_error);
+        printf("  平均Y误差: %.3f m\n", avg_y_error);
+        printf("  平均航向角误差: %.4f rad\n", avg_heading_error);
+    }
+    
+    /* 质量统计 */
+    printf("\n【质量统计】\n");
+    if (manager->calibration_count > 1) {
+        uint32_t quality_counts[6] = {0, 0, 0, 0, 0, 0};
+        for (uint32_t i = 0; i < manager->calibration_count; i++) {
+            uint32_t q = manager->calibration_points[i].rtk_state.quality;
+            if (q <= 5) quality_counts[q]++;
+        }
+        printf("  质量等级分布:\n");
+        for (uint32_t q = 0; q <= 5; q++) {
+            printf("    等级%u: %u个 (%.1f%%)\n", q, quality_counts[q],
+                   100.0 * quality_counts[q] / manager->calibration_count);
+        }
+    }
+    
+    /* 校准结果 */
+    printf("\n【校准结果】\n");
+    printf("  轮速计校准因子: %.6f\n", manager->estimated_calibration.wheel_calibration_factor);
+    printf("  转向角零偏: %.6f rad\n", manager->estimated_calibration.steering_angle_offset);
+    printf("  转向角增益: %.6f\n", manager->estimated_calibration.steering_angle_gain);
+    printf("  拟合优度 (R²): %.6f\n", manager->r_squared);
+    printf("  加权残差标准差: %.6f m\n", manager->weighted_std_dev);
+    printf("  校准有效: %s\n", manager->calibration_valid ? "是" : "否");
+    
+    printf("\n====================================\n\n");
 }
