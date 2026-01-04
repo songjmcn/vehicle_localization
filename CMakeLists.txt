@@ -57,6 +57,7 @@ set(SOURCES
     src/kalman_filter.c
     src/steering_model.c
     src/wheel_odometry_processor.c
+    src/steering_gain_calibration.c
     tools/rtk_calibration.c
     src/localization_system.c
 )
@@ -89,6 +90,14 @@ add_executable(offline_calibration tools/offline_calibration.c)
 # 可执行文件 - 转向角映射表集成示例
 add_executable(example_mapping_integration example_mapping_integration.c src/steering_model.c src/motion_model.c)
 target_link_libraries(example_mapping_integration PRIVATE m)
+
+# 测试可执行文件 - Task 4: 转向模型与RTK标定集成测试
+add_executable(test_steering_rtk_integration tools/test_steering_rtk_integration.c)
+target_link_libraries(test_steering_rtk_integration PRIVATE localization_lib m)
+
+# 测试可执行文件 - Phase 2 RTK标定集成测试
+add_executable(test_rtk_phase2_integration tools/test_rtk_phase2_integration.c)
+target_link_libraries(test_rtk_phase2_integration PRIVATE localization_lib m)
 
 # 安装目标
 install(TARGETS localization_example

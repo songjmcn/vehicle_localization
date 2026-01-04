@@ -98,12 +98,32 @@ vehicle_localization/
 │  └── build/                            # 编译输出目录
 │
 └─ 🔧 构建配置
-   ├── CMakeLists.txt                   # CMake构建配置 (推荐)
-   ├── Makefile                         # 传统Make配置 (向后兼容)
+   ├── CMakeLists.txt                   # CMake构建配置 (现代推荐)
+   ├── Makefile.deprecated              # 传统Make配置 (已弃用，参考用)
    └── README.md                        # 本文件
 ```
 
-## 🚀 快速开始
+## � 项目进度
+
+### Phase 2：转向角增益标定（P1）- 40% 完成 ⏳
+
+| 任务 | 状态 | 代码行数 | 测试 | 文档 |
+|-----|------|--------|------|------|
+| **Task 1** - 理论与设计 | ✅ 完成 | 800 | ✅ | ✅ |
+| **Task 2** - 核心算法 | ✅ 完成 | 830 | ✅ | ✅ |
+| **Task 3** - RTK框架集成 | ✅ 完成 | 520 | ✅ | ✅ |
+| **Task 4** - 转向模型集成 | ✅ 完成 | 498 | ✅ 4/4 | ✅ |
+| **Task 5** - 单元测试 | ⏳ 进行中 | — | — | — |
+| Task 6-10 | ⏳ 计划中 | — | — | — |
+
+**统计**：已完成代码 2,378 行 | 编译 ✅ 0错误 | 测试通过率 100% (4/4)
+
+**最新完成**：
+- ✅ 转向模型与RTK参数集成（[TASK4_STEERING_INTEGRATION_COMPLETE.md](docs/TASK4_STEERING_INTEGRATION_COMPLETE.md)）
+- ✅ 构建系统现代化（CMake 全面支持，Makefile 已弃用）
+- ✅ 架构重构（标定与定位系统完全解耦）
+
+## �🚀 快速开始
 
 ### 方案 A：Python 快速验证（算法演示）
 
@@ -115,7 +135,9 @@ cat scripts/localization_system.py
 cat docs/low_speed_localization_guide.md
 ```
 
-### 方案 B：C 编译运行（CMake - 推荐）⭐
+### 方案 B：C 编译运行（CMake）⭐ 推荐方案
+
+**准备**：确保安装了 CMake 和 GCC/Clang 编译器
 
 ```bash
 # 快速开始（一行命令）
@@ -123,24 +145,44 @@ cat docs/low_speed_localization_guide.md
 
 # 分步操作
 ./scripts/cmake_build.sh build         # 编译 Release 版本
-./scripts/cmake_build.sh build-debug   # 编译 Debug 版本
-./scripts/cmake_build.sh run           # 运行程序
+./scripts/cmake_build.sh build-debug   # 编译 Debug 版本（推荐用于开发）
+./scripts/cmake_build.sh run           # 运行主程序
 ./scripts/cmake_build.sh clean         # 清理编译产物
 ./scripts/cmake_build.sh rebuild       # 清除后重新编译
 ./scripts/cmake_build.sh help          # 查看所有命令
 ```
 
-📚 详见：[CMake 快速参考](docs/CMAKE_QUICK_REFERENCE.md)
-
-### 方案 C：传统 Makefile（向后兼容）
+**手动构建**（不使用脚本）：
 
 ```bash
-make clean && make && make run     # 一键编译运行
-make test_motion                   # 仅编译运动模型
-make test_filter                   # 仅编译滤波模块
+# Debug 版本（包含符号和优化）
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j$(nproc)
+./build/bin/localization_example
+
+# Release 版本（最大优化）
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
+./build/bin/localization_example
 ```
 
-📚 详见：[CMake vs Makefile](docs/CMAKE_vs_MAKEFILE.md)
+**运行集成测试**：
+
+```bash
+# Task 4: 转向模型与RTK标定集成测试
+./build/bin/test_steering_rtk_integration
+
+# Phase 2 RTK标定集成测试
+./build/bin/test_rtk_phase2_integration
+```
+
+📚 详见：[CMake 快速参考](docs/CMAKE_QUICK_REFERENCE.md) | [CMake 完整指南](docs/CMAKE_BUILD_GUIDE.md)
+
+### ❌ Makefile（已弃用）
+
+旧的 Makefile 已重命名为 `Makefile.deprecated`。项目现已完全迁移至 CMake 构建系统。
+
+如需了解迁移背景，请参考：[CMake vs Makefile 对比分析](docs/CMAKE_vs_MAKEFILE.md)
 
 ## 📊 系统架构
 
