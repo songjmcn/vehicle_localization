@@ -84,7 +84,13 @@ int rtk_calibration_add_point(RTKCalibrationManager_t *manager,
     point->odometry_state = *odometry_state;
     point->rtk_state = *rtk_state;
     
-    /* 计算误差 */
+    /* 计算误差
+     * heading_error = RTK_heading - VL_heading (里程计)
+     * 含义：
+     * - 正值: VL转向过度（超前）→ 应该减小VL的转向角
+     * - 负值: VL转向不足（滞后）→ 应该增加VL的转向角
+     * 这个误差值直接用作转向角offset参数
+     */
     point->position_error_x = rtk_state->x - odometry_state->x;
     point->position_error_y = rtk_state->y - odometry_state->y;
     point->heading_error = normalize_angle(rtk_state->heading - odometry_state->heading);
@@ -444,6 +450,27 @@ static double estimate_wheel_calibration_weighted(RTKCalibrationManager_t *manag
     } else {
         *weighted_std_dev = 0.0;
     }
+    /* 如果拟合优度较低或加权残差较大，使用中位数比率作为备用（更鲁棒）*/
+    if (*r_squared < 0.2 || *weighted_std_dev > 0.5) {
+        /* 计算所有非零 rtk_dists 的比例并取中位数 */
+        double *ratios = (double *)malloc(num_segments * sizeof(double));
+        if (ratios) {
+            uint32_t rcount = 0;
+            for (uint32_t i = 0; i < num_segments; i++) {
+                if (rtk_dists[i] > 1e-6) {
+                    ratios[rcount++] = odo_dists[i] / rtk_dists[i];
+                }
+            }
+            if (rcount > 0) {
+                qsort(ratios, rcount, sizeof(double), compare_doubles);
+                double med = (rcount % 2 == 1) ? ratios[rcount/2] : (ratios[rcount/2-1] + ratios[rcount/2]) / 2.0;
+                med = clamp(med, 0.8, 1.2);
+                fprintf(stderr, "⚠️  NOTICE: Weighted fit low quality (R²=%.3f, std=%.3f). Using median ratio=%.6f as fallback.\n", *r_squared, *weighted_std_dev, med);
+                calibration_factor = med;
+            }
+            free(ratios);
+        }
+    }
     
     free(odo_dists);
     free(rtk_dists);
@@ -456,6 +483,21 @@ static double estimate_wheel_calibration_weighted(RTKCalibrationManager_t *manag
 
 /**
  * @brief 最小二乘法拟合转向角零偏和增益
+ * 
+ * 转向角offset参数定义：
+ * - heading_error 计算为: RTK_heading - VL_heading
+ * - 如果 heading_error > 0，说明 VL 的转向超前（多转了）
+ * - 如果 heading_error < 0，说明 VL 的转向滞后（少转了）
+ * 
+ * steering_angle_gain 参数定义：
+ * - 代表转向角传感器的增益系数
+ * - gain = 1.0 表示转向角测量准确
+ * - gain > 1.0 表示转向角测量偏小（需要放大）
+ * - gain < 1.0 表示转向角测量偏大（需要缩小）
+ * 
+ * 计算方法（线性回归）：
+ * 模型：heading_error ≈ offset + gain × steering_angle
+ * gain = cov(heading_error, steering_angle) / var(steering_angle)
  */
 static void estimate_steering_calibration(RTKCalibrationManager_t *manager,
                                          double *offset, double *gain) {
@@ -466,17 +508,102 @@ static void estimate_steering_calibration(RTKCalibrationManager_t *manager,
         return;
     }
     
-    /* 基于航向角误差估计 */
+    /* 步骤1：估计零偏（简单平均） */
     double sum_error = 0.0;
+    double min_steering = 1e6;
+    double max_steering = -1e6;
+    
     for (uint32_t i = 0; i < manager->calibration_count; i++) {
         sum_error += manager->calibration_points[i].heading_error;
+        double steering = manager->calibration_points[i].odometry_state.steering_angle;
+        if (steering < min_steering) min_steering = steering;
+        if (steering > max_steering) max_steering = steering;
     }
-    
-    /* 平均航向角误差作为零偏估计 */
     *offset = sum_error / manager->calibration_count;
     
-    /* 增益通常接近1.0 */
-    *gain = 1.0;
+    /* 步骤2：估计增益（线性回归）
+     * 模型：heading_error = offset + gain × steering_angle
+     * 使用最小二乘法：gain = cov(heading_error, steering_angle) / var(steering_angle)
+     */
+    double sum_steering = 0.0;
+    double sum_heading_steering = 0.0;
+    double sum_steering_sq = 0.0;
+    
+    for (uint32_t i = 0; i < manager->calibration_count; i++) {
+        RTKCalibrationPoint_t *point = &manager->calibration_points[i];
+        double steering = point->odometry_state.steering_angle;
+        double heading_err = point->heading_error;
+        
+        sum_steering += steering;
+        sum_heading_steering += heading_err * steering;
+        sum_steering_sq += steering * steering;
+    }
+    
+    uint32_t n = manager->calibration_count;
+    double mean_steering = sum_steering / n;
+    double mean_heading_steering = sum_heading_steering / n;
+    double mean_steering_sq = sum_steering_sq / n;
+    
+    /* 协方差：cov = E[XY] - E[X]E[Y] */
+    double cov = mean_heading_steering - (*offset) * mean_steering;
+    /* 方差：var = E[X²] - E[X]² */
+    double var = mean_steering_sq - mean_steering * mean_steering;
+    
+    fprintf(stderr, "   [DEBUG] Steering angle range: [%.6f, %.6f] rad\n", min_steering, max_steering);
+    fprintf(stderr, "   [DEBUG] Steering variance: %.6e, covariance: %.6e\n", var, cov);
+    
+    if (var > 1e-8) {
+        *gain = cov / var;
+        fprintf(stderr, "   [DEBUG] Computed gain: %.6f\n", *gain);
+    } else {
+        /* 如果方差过小，尝试使用之前的估计或回退到1.0，并用中位数方法估计offset */
+        if (manager->steering_gain_valid) {
+            *gain = manager->estimated_calibration.steering_angle_gain;
+            fprintf(stderr, "⚠️  NOTICE: Insufficient steering variation; using previous steering_gain=%.6f\n", *gain);
+        } else {
+            *gain = 1.0;
+            fprintf(stderr, "⚠️  WARNING: Insufficient steering angle variation for gain estimation; using default gain = 1.0\n");
+        }
+        fprintf(stderr, "   variance = %.6e\n", var);
+        fprintf(stderr, "   建议：采集包含多样转向角的数据以估计 steering_gain\n");
+    }
+    
+    /* 限制增益在合理范围 */
+    *gain = fmax(0.5, fmin(2.0, *gain));
+
+    /* 使用中位数估计offset以增强鲁棒性（对离群值不敏感）
+     * offset = median(heading_error - gain * steering)
+     */
+    double *resid = (double *)malloc(n * sizeof(double));
+    if (resid) {
+        for (uint32_t i = 0; i < n; i++) {
+            double steering = manager->calibration_points[i].odometry_state.steering_angle;
+            double heading_err = manager->calibration_points[i].heading_error;
+            resid[i] = heading_err - (*gain) * steering;
+        }
+        /* 计算中位数 */
+        double med = 0.0;
+        /* reuse calculate_mad to get median (it returns MAD but also outputs median) */
+        double mad_unused = calculate_mad(resid, n, &med);
+        *offset = med;
+        free(resid);
+        fprintf(stderr, "   [DEBUG] Robust offset (median) computed: %.6f\n", *offset);
+    }
+    
+    /* 参数有效性检查 */
+    if (fabs(*offset) > 0.3) {  /* ±0.3 rad ≈ ±17° */
+        fprintf(stderr, "⚠️  WARNING: steering_angle_offset = %.6f rad (%.2f°) exceeds ±0.3 rad\n",
+                *offset, *offset * 180.0 / M_PI);
+        fprintf(stderr, "   Possible causes:\n");
+        fprintf(stderr, "   - Severe steering angle calibration error\n");
+        fprintf(stderr, "   - Significant kinematic model mismatch\n");
+        fprintf(stderr, "   - Data quality issue in calibration dataset\n");
+    }
+    
+    if (fabs(*gain - 1.0) > 0.2) {
+        fprintf(stderr, "⚠️  WARNING: steering_angle_gain = %.6f deviates from 1.0\n", *gain);
+        fprintf(stderr, "   Possible cause: steering angle sensor calibration needed\n");
+    }
 }
 
 int rtk_calibration_compute(RTKCalibrationManager_t *manager,
@@ -507,6 +634,21 @@ int rtk_calibration_compute(RTKCalibrationManager_t *manager,
     
     calibration->steering_angle_offset = (float)steering_offset_d;
     calibration->steering_angle_gain = (float)steering_gain_d;
+    
+    /* 参数有效性验证和警告
+     * steering_angle_offset 范围检查：
+     * - 正常范围应在 [-0.3, 0.3] rad 之间（约±17°）
+     * - 超出范围可能表示标定数据有问题或系统配置有误
+     */
+    if (fabs(calibration->steering_angle_offset) > 0.3f) {
+        fprintf(stderr, "⚠️  WARNING: steering_angle_offset=%.6f rad (%.2f°) 超出正常范围!\n",
+                calibration->steering_angle_offset,
+                calibration->steering_angle_offset * 180.0f / 3.14159f);
+        fprintf(stderr, "    说明：可能的原因：\n");
+        fprintf(stderr, "    1. RTK数据质量不足\n");
+        fprintf(stderr, "    2. 车辆转向模型配置错误\n");
+        fprintf(stderr, "    3. 里程计/RTK时间同步问题\n");
+    }
     
     /* Phase 2 (P1) 如果有足够的转向增益标定点，进行转向增益估计 */
     if (manager->steering_gain_manager.point_count >= 10) {

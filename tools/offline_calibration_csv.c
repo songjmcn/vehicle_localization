@@ -383,14 +383,30 @@ int perform_calibration(const CalibrationPoint_t *points, int count, Calibration
         fprintf(stderr, "ERROR: Calibration computation failed\n");
         return -1;
     }
-    
-    // Populate result structure
+
+    /* 计算并收集统计信息以写入输出（确保 stats 已计算） */
+    CalibrationStats_t stats;
+    if (compute_calibration_stats(points, count, &stats) != 0) {
+        fprintf(stderr, "ERROR: Failed to compute calibration statistics\n");
+        return -1;
+    }
+
+    /* Populate result structure */
     result->wheel_calibration_factor = calib_params.wheel_calibration_factor;
     result->wheel_factor_confidence = (added > 20) ? 0.95f : 0.75f;
     result->wheel_factor_uncertainty = 0.01f;
     
-    result->steering_angle_offset_rad = calib_params.steering_angle_offset;
-    result->steering_angle_offset_deg = calib_params.steering_angle_offset * 180.0f / (float)M_PI;
+    /* 符号处理说明：
+     * 离线标定计算：heading_error = RTK_heading - VL_heading
+     * 存储含义：offset 代表 VL 相对 RTK 的转向误差
+     * 应用公式：cal_steering = raw_steering - offset
+     * 
+     * 为确保参数语义清晰，这里将计算的偏差反转符号后保存：
+     * - 如果 VL 转向过度（+heading_error），offset 应为正（减小转向）
+     * - 如果 VL 转向不足（-heading_error），offset 应为负（增加转向）
+     */
+    result->steering_angle_offset_rad = -1.0f * calib_params.steering_angle_offset;
+    result->steering_angle_offset_deg = -1.0f * (calib_params.steering_angle_offset * 180.0f / (float)M_PI);
     result->steering_angle_gain = calib_params.steering_angle_gain;
     result->steering_gain_confidence = (added > 20) ? 0.92f : 0.70f;
     result->steering_gain_uncertainty = 0.02f;
@@ -401,11 +417,15 @@ int perform_calibration(const CalibrationPoint_t *points, int count, Calibration
     result->imu_accel_scale_x = calib_params.imu_accel_scale_x;
     result->imu_accel_scale_y = calib_params.imu_accel_scale_y;
     
-    result->r_squared = 0.95f;
-    result->avg_position_error = 0.05f;
-    result->max_position_error = 0.1f;
-    result->avg_heading_error = 0.02f;
-    result->confidence_score = (added > 0) ? (float)added / count * 0.95f + 0.05f : 0.5f;
+    /* 使用实际计算结果填充统计字段 */
+    result->r_squared = (float)calib_manager.r_squared;
+    result->avg_position_error = (float)stats.position_error_mean;
+    result->max_position_error = (float)stats.position_error_max;
+    result->avg_heading_error = (float)stats.heading_error_mean;
+    /* confidence 基于 r_squared 与有效点比率综合计算 */
+    float point_ratio = (count > 0) ? (float)added / (float)count : 0.0f;
+    result->confidence_score = (float)(0.5 * (double)result->r_squared + 0.5 * point_ratio);
+    if (result->confidence_score > 1.0f) result->confidence_score = 1.0f;
     
     result->calibration_time = time(NULL);
     struct tm *tm_info = localtime(&result->calibration_time);

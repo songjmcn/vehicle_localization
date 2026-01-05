@@ -124,6 +124,35 @@ class TrajectoryComparison:
             self.rtk_raw_df = pd.read_csv(self.rtk_raw_file, sep=';')
             print(f"   ✅ 原始RTK数据点: {len(self.rtk_raw_df)}")
 
+        # ----- 列名标准化与兼容性处理 -----
+        # 确保 RTK 转换数据中有 'RTK_heading'（某些文件使用 'heading'）
+        if 'RTK_heading' not in self.rtk_df.columns and 'heading' in self.rtk_df.columns:
+            self.rtk_df['RTK_heading'] = self.rtk_df['heading']
+
+        # 如果定位数据没有 'distance' 列，则根据 x,y 计算累计距离并填充
+        if 'distance' not in self.loc_df.columns:
+            try:
+                if len(self.loc_df) > 1:
+                    points = np.vstack((self.loc_df['x'].values, self.loc_df['y'].values)).T
+                    segs = np.linalg.norm(np.diff(points, axis=0), axis=1)
+                    cumdist = np.concatenate(([0.0], np.cumsum(segs)))
+                else:
+                    cumdist = np.zeros(len(self.loc_df))
+                self.loc_df['distance'] = cumdist
+                print(f"   ℹ️  计算并添加缺失的 'distance' 列，共 {len(self.loc_df)} 条记录")
+            except Exception as e:
+                print(f"   ⚠️  计算 'distance' 失败: {e}")
+
+        # 原始RTK（rtk_can.csv）列名适配：RTK_x/RTK_y -> X/Y
+        if self.rtk_raw_df is not None:
+            if 'RTK_x' in self.rtk_raw_df.columns and 'RTK_y' in self.rtk_raw_df.columns:
+                # 增加兼容的列名，用于绘图函数中检查 'X'/'Y'
+                self.rtk_raw_df['X'] = self.rtk_raw_df['RTK_x']
+                self.rtk_raw_df['Y'] = self.rtk_raw_df['RTK_y']
+            # 如果原始RTK使用 'heading' 字段则映射到 'RTK_heading'
+            if 'RTK_heading' not in self.rtk_raw_df.columns and 'heading' in self.rtk_raw_df.columns:
+                self.rtk_raw_df['RTK_heading'] = self.rtk_raw_df['heading']
+
         # 🔧 打印C代码的关键参数（与src/localization_system.c同步）
         self._print_config_info()
         
@@ -224,7 +253,13 @@ class TrajectoryComparison:
         
         # 计算定位系统输出的总距离
         if len(self.loc_df) > 1:
-            total_distance_loc = self.loc_df['distance'].iloc[-1]
+            # 使用已存在的 'distance' 列，若不存在则基于 x,y 计算总路程
+            if 'distance' in self.loc_df.columns:
+                total_distance_loc = self.loc_df['distance'].iloc[-1]
+            else:
+                points_loc = np.vstack((self.loc_df['x'].values, self.loc_df['y'].values)).T
+                segs_loc = np.linalg.norm(np.diff(points_loc, axis=0), axis=1)
+                total_distance_loc = np.sum(segs_loc)
             print(f"   • 定位系统总距离: {total_distance_loc:.2f} m")
             
             # 计算RTK参考距离
@@ -693,7 +728,7 @@ Y误差:
         """保存文本格式的对比报告"""
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write("=" * 70 + "\n")
-            f.write("RTK参考轨迹(rtk_can.csv) vs EKF定位轨迹(vehicle_licalization.csv)对比报告\n")
+            f.write("RTK参考轨迹(rtk_can.csv) vs EKF定位轨迹(vehicle_localization.csv)对比报告\n")
             f.write("=" * 70 + "\n\n")
 
             f.write("1. 数据信息\n")
@@ -822,7 +857,7 @@ def main():
     # 文件路径
     rtk_converted_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_converted.csv'
     localization_file = '/Users/alex/workspace/code_review/vehicle_localization/vehicle_localization.csv'
-    rtk_raw_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_data.csv'
+    rtk_raw_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_can.csv'
     output_dir = '/Users/alex/workspace/code_review/vehicle_localization/scripts/trajectory_comparison'
 
     # 检查文件

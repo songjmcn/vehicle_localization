@@ -16,6 +16,7 @@ build
 *.log
 *.bak
 *.back
+*.json
 __pycache__
 rtk_trajectory_plots
 trajectory_comparison

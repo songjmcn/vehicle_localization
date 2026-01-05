@@ -334,7 +334,17 @@ void kalman_filter_predict_with_state(KalmanFilter_t *kf,
         return;
     }
     
-    /* 应用校准参数 */
+    /* 应用校准参数
+     * 
+     * wheel_calibration_factor: 直接乘法应用，补偿轮速计测量偏差
+     *   cal_velocity = raw_velocity * factor
+     * 
+     * steering_angle_offset: 直接减法应用，补偿转向角偏差
+     *   - offset 已在离线标定工具中正确处理符号
+     *   - 正值表示减小转向角（纠正超前转向）
+     *   - 负值表示增加转向角（纠正滞后转向）
+     *   cal_steering = raw_steering - offset
+     */
     double cal_velocity = velocity * kf->calibration.wheel_calibration_factor;
     double cal_steering = steering_angle - kf->calibration.steering_angle_offset;
     cal_steering *= kf->calibration.steering_angle_gain;
@@ -477,6 +487,11 @@ void kalman_filter_update_basic(KalmanFilter_t *kf,
         accel_mag,
         sensor_data->steering.steering_angle - kf->calibration.steering_angle_offset
     };
+    /* 调试输出：确认 wheel_calibration_factor 在观测构造处的应用 */
+    printf("[DEBUG update_basic] raw_wheel=%f, wheel_calibration_factor=%f, z0=%f\n",
+           sensor_data->wheel_odometry.velocity,
+           kf->calibration.wheel_calibration_factor,
+           z[0]);
     
     /* 测量噪声（自适应） */
     double R[3][3] = {0};
@@ -678,6 +693,12 @@ void kalman_filter_update_imu_steering(KalmanFilter_t *kf,
         sensor_data->steering.steering_angle - kf->calibration.steering_angle_offset,
         delta_imu
     };
+    /* 调试输出：确认 wheel_calibration_factor 在 IMU steering 路径的应用 */
+    printf("[DEBUG update_imu_steering] raw_wheel=%f, wheel_calibration_factor=%f, z0=%f, delta_imu=%f\n",
+           v,
+           kf->calibration.wheel_calibration_factor,
+           z[0],
+           delta_imu);
     
     /* 测量噪声（4x4矩阵） */
     double R[4][4] = {0};

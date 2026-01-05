@@ -8,6 +8,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 /**
  * @brief 模拟传感器数据的生成函数
@@ -264,6 +265,19 @@ bool save_localization_data(FILE *f,VehicleState_t *state){
             state->timestamp);
     return true;
 }
+/* 简单 JSON 数字解析（只查找键并解析冒号后的数字） */
+static double parse_json_number(const char *buf, const char *key) {
+    const char *p = strstr(buf, key);
+    if (!p) return NAN;
+    p = strchr(p, ':');
+    if (!p) return NAN;
+    p++;
+    while (*p && isspace((unsigned char)*p)) p++;
+    char *endptr = NULL;
+    double v = strtod(p, &endptr);
+    if (endptr == p) return NAN;
+    return v;
+}
 LocalizationSystem_t localization_sys;
 int main()
 {
@@ -286,19 +300,61 @@ int main()
         printf("ERROR: Failed to initialize localization system!\n");
         return -1;
     }
-    CalibrationParams_t calibration = {
-        .wheel_calibration_factor = 0.99240929,
-        .steering_angle_offset = -0.00914977,
-        .steering_angle_gain = 1.0,
-        .imu_accel_bias_x = 0.0f,
-        .imu_accel_bias_y = 0.0f,
-        .imu_gyro_bias_z = 0.0f,
-        .imu_accel_scale_x = 1.0,
-        .imu_accel_scale_y = 1.0,
-        .imu_lateral_accel_bias = 0.0f,
-        .imu_lateral_accel_scale = 1.0f
-    };
-    localization_system_set_calibration(&localization_sys,&calibration);
+
+    /* 尝试从 `calibration.json` 加载标定参数，如果失败则使用默认硬编码值 */
+
+    CalibrationParams_t calibration = {0};
+    /* 默认值（保留原示例的默认参数） */
+    calibration.wheel_calibration_factor = 0.80000001f;
+    calibration.steering_angle_offset = 0.02528761f;
+    calibration.steering_angle_gain = 1.0f;
+    calibration.imu_accel_bias_x = 0.0f;
+    calibration.imu_accel_bias_y = 0.0f;
+    calibration.imu_gyro_bias_z = 0.0f;
+    calibration.imu_accel_scale_x = 1.0f;
+    calibration.imu_accel_scale_y = 1.0f;
+    calibration.imu_lateral_accel_bias = 0.0f;
+    calibration.imu_lateral_accel_scale = 1.0f;
+
+    FILE *cf = fopen("calibration.json", "r");
+    if (cf) {
+        fseek(cf, 0, SEEK_END);
+        long sz = ftell(cf);
+        fseek(cf, 0, SEEK_SET);
+        char *buf = malloc((size_t)sz + 1);
+        if (buf) {
+            if (fread(buf, 1, (size_t)sz, cf) == (size_t)sz) {
+                buf[sz] = '\0';
+                double v;
+                v = parse_json_number(buf, "\"wheel_calibration_factor\"");
+                if (!isnan(v)) calibration.wheel_calibration_factor = (float)v;
+                v = parse_json_number(buf, "\"steering_angle_offset_rad\"");
+                if (!isnan(v)) calibration.steering_angle_offset = (float)v;
+                v = parse_json_number(buf, "\"steering_angle_gain\"");
+                if (!isnan(v)) calibration.steering_angle_gain = (float)v;
+                v = parse_json_number(buf, "\"imu_accel_bias_x_mss\"");
+                if (!isnan(v)) calibration.imu_accel_bias_x = (float)v;
+                v = parse_json_number(buf, "\"imu_accel_bias_y_mss\"");
+                if (!isnan(v)) calibration.imu_accel_bias_y = (float)v;
+                v = parse_json_number(buf, "\"imu_gyro_bias_z_rads\"");
+                if (!isnan(v)) calibration.imu_gyro_bias_z = (float)v;
+                v = parse_json_number(buf, "\"imu_accel_scale_x\"");
+                if (!isnan(v)) calibration.imu_accel_scale_x = (float)v;
+                v = parse_json_number(buf, "\"imu_accel_scale_y\"");
+                if (!isnan(v)) calibration.imu_accel_scale_y = (float)v;
+            }
+            free(buf);
+        }
+        fclose(cf);
+        printf("\n📋 标定参数已加载（来自 calibration.json 或默认）\n");
+    } else {
+        printf("\n📋 未找到 calibration.json，使用默认硬编码标定参数\n");
+    }
+
+    printf("   wheel_calibration_factor: %.8f\n", calibration.wheel_calibration_factor);
+    printf("   steering_angle_offset: %.8f rad\n", calibration.steering_angle_offset);
+    printf("   steering_angle_gain: %.8f\n\n", calibration.steering_angle_gain);
+    localization_system_set_calibration(&localization_sys, &calibration);
     
     /* === ISO 8855坐标系配置确认 === */
     printf("═══════════════════════════════════════════════════════\n");
