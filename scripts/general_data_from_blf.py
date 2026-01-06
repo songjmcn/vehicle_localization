@@ -42,7 +42,7 @@ def get_signal_sync_time(signals:list, time:float):
             result = sig
     return result    
 if __name__ == "__main__":
-    blf_file = "/Users/alex/Downloads/LEV-RTK+Vehicle_Data/Lev01_R19_Stragight__forward_0_5kph_001.blf"
+    blf_file = "/Users/alex/Downloads/LEV-RTK+Vehicle_Data/cercle.blf"
     vehicle_dbc = "dbc/LEV-01/LEV01_ADAS_V2.4_20240226.dbc"
     rtk_dbc = "dbc/RTK/CAN_Protocol 2.0_20210507-motorola.dbc"
     vehicle_signal_mapping = {"ABS_RRWheelSpeedRC":"WheelCounter_RR",

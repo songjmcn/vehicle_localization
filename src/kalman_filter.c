@@ -346,10 +346,12 @@ void kalman_filter_predict_with_state(KalmanFilter_t *kf,
      *   cal_steering = raw_steering - offset
      */
     double cal_velocity = velocity * kf->calibration.wheel_calibration_factor;
-    double cal_steering = steering_angle - kf->calibration.steering_angle_offset;
-    cal_steering *= kf->calibration.steering_angle_gain;
-    cal_steering = clamp(cal_steering, -(kf->steering_config->steering_config.max_steering_wheel_angle), kf->steering_config->steering_config.max_steering_wheel_angle);
-    printf("velocity=%f, steering angle=%f, cal_velocity=%f, cal_steering=%f\n", velocity, steering_angle, cal_velocity, cal_steering);
+    /* 输入的 steering_angle 在入口已被映射为前轮转向角(front_wheel_angle)，因此此处不再重复应用方向盘的偏置/增益校准 */
+    double cal_steering = steering_angle; /* 已为前轮转向角 front_wheel_angle */
+    /* 使用前轮转向角的极限做钳制 */
+    cal_steering = clamp(cal_steering, -(kf->steering_config->steering_config.max_front_wheel_angle), kf->steering_config->steering_config.max_front_wheel_angle);
+    /* 调试输出（保留以便排查） */
+    printf("velocity=%f, front_wheel_angle=%f, cal_velocity=%f\n", velocity, cal_steering, cal_velocity);
     /* 当前状态（直接使用传入的状态，其中包含已计算的方向） */
     VehicleState_t current_state = *state_with_direction;
     current_state.steering_angle = kf->state.x_hat[4];
@@ -372,7 +374,7 @@ void kalman_filter_predict_with_state(KalmanFilter_t *kf,
     /* 计算雅可比矩阵 */
     double F[5][5];
     memset(F, 0, sizeof(F));
-    motion_model_jacobian(&current_state, cal_velocity, cal_steering, dt, F);
+    motion_model_jacobian(&current_state, kf->steering_config, cal_velocity, cal_steering, dt, F);
 
     /* 协方差矩阵的预测更新（P = F*P*F^T + Q） */
     double FP[5][5], FPF_T[5][5];
@@ -481,17 +483,12 @@ void kalman_filter_update_basic(KalmanFilter_t *kf,
     /* 检测静止 */
     kf->diagnostics.is_stationary = (fabs(sensor_data->wheel_odometry.velocity) < V_STATIC_THRESHOLD);
     
-    /* 测量向量 [wheel_velocity, imu_accel_magnitude, steering_angle] */
+    /* 测量向量 [wheel_velocity, imu_accel_magnitude, front_wheel_angle] */
     double z[3] = {
         sensor_data->wheel_odometry.velocity * kf->calibration.wheel_calibration_factor,
         accel_mag,
-        sensor_data->steering.steering_angle - kf->calibration.steering_angle_offset
+        sensor_data->steering.steering_angle /* front_wheel_angle: 已由上层映射/校准 */
     };
-    /* 调试输出：确认 wheel_calibration_factor 在观测构造处的应用 */
-    printf("[DEBUG update_basic] raw_wheel=%f, wheel_calibration_factor=%f, z0=%f\n",
-           sensor_data->wheel_odometry.velocity,
-           kf->calibration.wheel_calibration_factor,
-           z[0]);
     
     /* 测量噪声（自适应） */
     double R[3][3] = {0};
@@ -518,13 +515,13 @@ void kalman_filter_update_basic(KalmanFilter_t *kf,
     double H[3][5] = {0};
     H[0][3] = 1.0;  /* 轮速计测量速度 */
     H[1][3] = 1.0;  /* IMU加速度与速度相关 */
-    H[2][4] = 1.0;  /* 转向角直接测量 */
+    H[2][4] = 1.0;  /* 前轮转向角直接测量 */
     
     /* 预测测量值 */
     double z_hat[3] = {
         kf->state.x_hat[3],  /* 预测速度 */
         0.0,                 /* IMU加速度（一阶模型为0） */
-        kf->state.x_hat[4]   /* 预测转向角 */
+        kf->state.x_hat[4]   /* 预测前轮转向角 */
     };
     
     /* 残差 */
@@ -690,15 +687,9 @@ void kalman_filter_update_imu_steering(KalmanFilter_t *kf,
     double z[4] = {
         v * kf->calibration.wheel_calibration_factor,
         accel_mag,
-        sensor_data->steering.steering_angle - kf->calibration.steering_angle_offset,
+        sensor_data->steering.steering_angle, /* front_wheel_angle */
         delta_imu
     };
-    /* 调试输出：确认 wheel_calibration_factor 在 IMU steering 路径的应用 */
-    printf("[DEBUG update_imu_steering] raw_wheel=%f, wheel_calibration_factor=%f, z0=%f, delta_imu=%f\n",
-           v,
-           kf->calibration.wheel_calibration_factor,
-           z[0],
-           delta_imu);
     
     /* 测量噪声（4x4矩阵） */
     double R[4][4] = {0};
@@ -809,7 +800,6 @@ void kalman_filter_update_imu_steering(KalmanFilter_t *kf,
     /* 正规化角度 */
     kf->state.x_hat[2] = normalize_angle(kf->state.x_hat[2]);
     kf->state.x_hat[4] = normalize_angle(kf->state.x_hat[4]);
-    
     /* 协方差更新：P = (I - K * H) * P */
     double I_KH[5][5];
     for (int i = 0; i < 5; i++) {

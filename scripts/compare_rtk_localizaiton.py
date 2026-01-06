@@ -857,7 +857,7 @@ def main():
     # 文件路径
     rtk_converted_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_converted.csv'
     localization_file = '/Users/alex/workspace/code_review/vehicle_localization/vehicle_localization.csv'
-    rtk_raw_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_can.csv'
+    # rtk_raw_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_can.csv'
     output_dir = '/Users/alex/workspace/code_review/vehicle_localization/scripts/trajectory_comparison'
 
     # 检查文件
@@ -875,7 +875,7 @@ def main():
     print(f"定位数据: vehicle_localization.csv (卡尔曼滤波结果)")
     print("=" * 70)
 
-    comparator = TrajectoryComparison(rtk_converted_file, localization_file, rtk_raw_file)
+    comparator = TrajectoryComparison(rtk_converted_file, localization_file, None)
 
     # 生成对比报告
     comparator.save_comparison_report(output_dir)

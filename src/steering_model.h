@@ -1,8 +1,8 @@
 /**
  * @file steering_model.h
- * @brief 转向角转换模块 - 方向盘转角到车轮转向角
+ * @brief 转向角转换模块 - 方向盘转角到前轮转向角
  * 
- * 本模块实现方向盘转角（steering wheel angle）到前轮转向角（front wheel steering angle）
+ * 本模块实现方向盘转角（steering wheel angle）到前轮转向角（front wheel angle）
  * 以及到车辆航向角变化率（yaw rate）的转换。
  * 
  * 转换链：
@@ -43,12 +43,12 @@ typedef struct {
  */
 typedef struct {
     float filtered_steering_angle; /**< 滤波后的前轮转向角 (rad) */
-    float prev_steering_angle;     /**< 前一时刻的转向角 (rad) */
-    float steering_rate;           /**< 转向角速率 (rad/s) */
+    float prev_steering_angle;     /**< 前一时刻的前轮转向角 (rad) */
+    float steering_rate;           /**< 前轮转向角速率 (rad/s) */
     uint64_t prev_timestamp;        /**< 前一时刻的时间戳 (ms) */
-    float left_wheel_angle;        /**< 前左轮转角 (rad) */
-    float right_wheel_angle;       /**< 前右轮转角 (rad) */
-    float mean_wheel_angle;        /**< 平均前轮转角 (rad) */
+    float left_wheel_angle;        /**< 前左轮转向角 (rad) */
+    float right_wheel_angle;       /**< 前右轮转向角 (rad) */
+    float mean_wheel_angle;        /**< 平均前轮转向角 (rad) */
 } SteeringModelState_t;
 
 /**

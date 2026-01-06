@@ -243,6 +243,90 @@ class RTKTrajectoryPlotter:
             import traceback
             traceback.print_exc()
     
+    def load_from_rtk_converted_csv(self, csv_file: str) -> None:
+        """
+        从 rtk_converted.csv 文件加载RTK数据（优化后的轨迹）
+        
+        文件格式:
+            x;y;heading;heading_rad;z;quality;timestamp
+            0.0;0.0;-0.0;-0.0;0.0;5;1761920619.139165
+        
+        坐标系统：ISO 8855 车体坐标系
+            - X 轴：纵轴（前向），单位米
+            - Y 轴：横轴（左向为正），单位米
+            - heading_rad：航向角（弧度），[-π, π]
+            - 质量等级：0-5
+            - 时间戳：秒
+        
+        Args:
+            csv_file: CSV文件路径
+        
+        Returns:
+            None
+        """
+        
+        if not os.path.exists(csv_file):
+            print(f"ERROR: CSV file not found: {csv_file}")
+            return
+        
+        print(f"📂 加载RTK转换数据文件: {csv_file}")
+        print(f"   坐标系统: ISO 8855车体坐标系")
+        print(f"   X轴: 纵轴(前向), Y轴: 横轴(左向为正)")
+        
+        x_list = []
+        y_list = []
+        heading_list = []
+        timestamps_list = []
+        quality_list = []
+        
+        try:
+            with open(csv_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f, delimiter=';')
+                
+                for row_idx, row in enumerate(reader):
+                    try:
+                        # 提取数据 (处理可能的空格)
+                        # 注意：rtk_converted.csv 已经在车体坐标系中
+                        x = float(row['x'].strip())                    # X轴（纵轴，前向）
+                        y = float(row['y'].strip())                    # Y轴（横轴，左向为正）
+                        heading_rad = float(row['heading_rad'].strip())  # 航向角（弧度）
+                        quality = int(float(row['quality'].strip()))    # 质量
+                        timestamp = float(row['timestamp'].strip())     # 时间戳（秒）
+                        
+                        # 时间戳从秒转换为毫秒
+                        timestamp_ms = int(timestamp * 1000)
+                        
+                        x_list.append(x)
+                        y_list.append(y)
+                        heading_list.append(heading_rad)
+                        timestamps_list.append(timestamp_ms)
+                        quality_list.append(quality)
+                        
+                    except (ValueError, KeyError) as e:
+                        print(f"WARNING: 第 {row_idx + 2} 行数据格式错误: {e}")
+                        continue
+            
+            if not x_list:
+                print(f"ERROR: No valid data found in CSV file!")
+                return
+            
+            # 加载数据（is_latlon=False 表示使用笛卡尔坐标，不需要进行经纬度转换）
+            self.load_from_lists(
+                x_list=x_list,
+                y_list=y_list,
+                heading_list=heading_list,
+                timestamps_list=timestamps_list,
+                quality_list=quality_list,
+                is_latlon=False  # rtk_converted.csv 已经是笛卡尔坐标
+            )
+            
+            print(f"✓ RTK转换数据加载完成，共 {len(x_list)} 个有效数据点")
+            
+        except Exception as e:
+            print(f"ERROR: Failed to read CSV file: {e}")
+            import traceback
+            traceback.print_exc()
+    
     def detect_stable_first_point(self) -> Tuple[int, Dict]:
         """
         检测稳定的第一个点（RTK收敛点）
@@ -611,45 +695,63 @@ class RTKTrajectoryPlotter:
         
         # ===== 子图1：轨迹平面图 =====
         # 分两部分绘制：不稳定部分和稳定部分
+        # 注意：Y为横轴（左正右负），X为纵轴（上前下后）
         unstable_mask = is_before
         stable_mask = ~is_before
         
         if np.any(unstable_mask):
-            ax1.plot(x_coords[unstable_mask], y_coords[unstable_mask], 
+            ax1.plot(y_coords[unstable_mask], x_coords[unstable_mask], 
                     'r--', linewidth=2, alpha=0.5, label='Unstable Data')
-            ax1.scatter(x_coords[unstable_mask], y_coords[unstable_mask], 
+            ax1.scatter(y_coords[unstable_mask], x_coords[unstable_mask], 
                        c=quality[unstable_mask], cmap='Reds', s=30, alpha=0.4)
         
         if np.any(stable_mask):
-            ax1.plot(x_coords[stable_mask], y_coords[stable_mask], 
+            ax1.plot(y_coords[stable_mask], x_coords[stable_mask], 
                     'b-', linewidth=2.5, alpha=0.8, label='Stable Data')
-            ax1.scatter(x_coords[stable_mask], y_coords[stable_mask], 
+            ax1.scatter(y_coords[stable_mask], x_coords[stable_mask], 
                        c=quality[stable_mask], cmap='RdYlGn', s=40, alpha=0.7, vmin=0, vmax=5)
         
         # 标记稳定的第一个点
         ax1.plot(0, 0, 'g*', markersize=20, label='Stable Origin', zorder=10)
-        ax1.plot(x_coords[-1], y_coords[-1], 'r^', markersize=12, label='End Point', zorder=5)
+        ax1.plot(y_coords[-1], x_coords[-1], 'r^', markersize=12, label='End Point', zorder=5)
         
-        # 绘制方向箭头
-        arrow_interval = max(1, len(self.trajectory) // 15)
-        for i in range(self.ref_index, len(self.trajectory), arrow_interval):
+        # 绘制方向箭头（按距离间隔20cm显示一次）
+        arrow_length = max(0.5, (y_coords.max() - y_coords.min()) / 30)
+        distance_interval = 0.2  # 20cm间隔显示一次航向
+        
+        cumulative_distance = 0.0
+        last_arrow_distance = 0.0
+        
+        for i in range(self.ref_index, len(self.trajectory)):
             point = self.trajectory[i]
-            heading = point['heading']
-            arrow_length = max(0.5, (x_coords.max() - x_coords.min()) / 30)
-            dx = arrow_length * np.cos(heading)
-            dy = arrow_length * np.sin(heading)
             
-            arrow = FancyArrowPatch(
-                (point['x'], point['y']),
-                (point['x'] + dx, point['y'] + dy),
-                arrowstyle='->', mutation_scale=15, color='darkblue', 
-                linewidth=1.5, alpha=0.5
-            )
-            ax1.add_patch(arrow)
+            # 计算从上一个点到当前点的距离
+            if i > self.ref_index:
+                prev_point = self.trajectory[i - 1]
+                dx = point['x'] - prev_point['x']
+                dy = point['y'] - prev_point['y']
+                segment_distance = np.sqrt(dx**2 + dy**2)
+                cumulative_distance += segment_distance
+            
+            # 每隔distance_interval(20cm)显示一次航向
+            if cumulative_distance - last_arrow_distance >= distance_interval:
+                heading = point['heading']
+                dx = arrow_length * np.cos(heading)
+                dy = arrow_length * np.sin(heading)
+                
+                arrow = FancyArrowPatch(
+                    (point['y'], point['x']),
+                    (point['y'] + dy, point['x'] + dx),
+                    arrowstyle='->', mutation_scale=15, color='darkblue', 
+                    linewidth=1.5, alpha=0.6
+                )
+                ax1.add_patch(arrow)
+                last_arrow_distance = cumulative_distance
         
-        ax1.set_xlabel('X / East (m)', fontsize=11)
-        ax1.set_ylabel('Y / North (m)', fontsize=11)
-        ax1.set_title('RTK Trajectory (Top View) - Stable First Point Detection', fontsize=12, fontweight='bold')
+        ax1.set_xlabel('Y 横向坐标 (m) - 左正(+) 右负(-) - ISO 8855', fontsize=11, fontweight='bold')
+        ax1.set_ylabel('X 纵向坐标 (m) - 上前(+) 下后(-) - ISO 8855', fontsize=11, fontweight='bold')
+        ax1.set_title('RTK轨迹 (俯视图，ISO 8855坐标系) - 稳定第一个点检测', fontsize=12, fontweight='bold')
+        ax1.invert_xaxis()  # 反转横轴，使左正右负
         ax1.grid(True, alpha=0.3)
         ax1.legend(loc='best', fontsize=10)
         ax1.axis('equal')
@@ -792,6 +894,137 @@ class RTKTrajectoryPlotter:
         
         print("\n" + "="*75 + "\n")
     
+    def plot_trajectory_with_heading_markers(self, save_path: Optional[str] = None, 
+                                            figsize: Tuple[int, int] = (14, 10),
+                                            distance_interval: float = 0.2) -> None:
+        """
+        绘制轨迹，并在每隔指定距离处显示航向箭头
+        
+        Args:
+            save_path: 图表保存路径（可选）
+            figsize: 图表大小（宽，高）
+            distance_interval: 航向箭头显示间隔（米，默认0.2m=20cm）
+        """
+        
+        if not self.trajectory:
+            print("ERROR: No trajectory data!")
+            return
+        
+        x_coords = np.array([p['x'] for p in self.trajectory])
+        y_coords = np.array([p['y'] for p in self.trajectory])
+        headings = np.array([p['heading'] for p in self.trajectory])
+        quality = np.array([p['quality'] for p in self.trajectory])
+        is_before = np.array([p['is_before_stable'] for p in self.trajectory])
+        
+        # 创建图表
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # 分两部分绘制：不稳定部分和稳定部分
+        # 注意：Y为横轴（左正右负），X为纵轴（上前下后）
+        unstable_mask = is_before
+        stable_mask = ~is_before
+        
+        if np.any(unstable_mask):
+            ax.plot(y_coords[unstable_mask], x_coords[unstable_mask], 
+                    'r--', linewidth=2, alpha=0.5, label='Unstable Data')
+            ax.scatter(y_coords[unstable_mask], x_coords[unstable_mask], 
+                       c='red', s=30, alpha=0.3)
+        
+        if np.any(stable_mask):
+            ax.plot(y_coords[stable_mask], x_coords[stable_mask], 
+                    'b-', linewidth=2, alpha=0.7, label='Trajectory')
+            ax.scatter(y_coords[stable_mask], x_coords[stable_mask], 
+                       c=quality[stable_mask], cmap='viridis', s=50, 
+                       alpha=0.6, vmin=0, vmax=5)
+        
+        # 标记关键点
+        ax.plot(0, 0, 'g*', markersize=25, label='Start (Stable)', zorder=10)
+        ax.plot(y_coords[-1], x_coords[-1], 'r^', markersize=15, label='End', zorder=5)
+        
+        # 绘制航向箭头（按距离间隔显示）
+        arrow_length = max(0.3, (y_coords.max() - y_coords.min()) / 25)
+        
+        cumulative_distance = 0.0
+        last_arrow_distance = 0.0
+        
+        # 统计信息
+        arrow_count = 0
+        arrow_positions = []
+        
+        for i in range(self.ref_index, len(self.trajectory)):
+            point = self.trajectory[i]
+            
+            # 计算从上一个点到当前点的距离
+            if i > self.ref_index:
+                prev_point = self.trajectory[i - 1]
+                dx = point['x'] - prev_point['x']
+                dy = point['y'] - prev_point['y']
+                segment_distance = np.sqrt(dx**2 + dy**2)
+                cumulative_distance += segment_distance
+            
+            # 每隔distance_interval显示一次航向箭头
+            if cumulative_distance - last_arrow_distance >= distance_interval:
+                heading = point['heading']
+                dx = arrow_length * np.cos(heading)
+                dy = arrow_length * np.sin(heading)
+                
+                # 创建箭头 (注意：绘图坐标为(y,x)，所以箭头方向也要转换)
+                arrow = FancyArrowPatch(
+                    (point['y'], point['x']),
+                    (point['y'] + dy, point['x'] + dx),
+                    arrowstyle='->', mutation_scale=18, color='darkgreen', 
+                    linewidth=1.2, alpha=0.7, zorder=3
+                )
+                ax.add_patch(arrow)
+                
+                arrow_count += 1
+                arrow_positions.append((point['y'], point['x'], 
+                                      np.degrees(heading), cumulative_distance))
+                last_arrow_distance = cumulative_distance
+        
+        # 颜色条表示质量
+        sm = plt.cm.ScalarMappable(cmap='viridis', 
+                                   norm=plt.Normalize(vmin=0, vmax=5))
+        sm.set_array([])
+        cbar = plt.colorbar(sm, ax=ax, label='RTK Quality Level')
+        
+        # 图表标题和标签（ISO 8855坐标系）
+        ax.set_xlabel('Y 横向坐标 (m) - 左正(+) 右负(-) - ISO 8855', fontsize=12, fontweight='bold')
+        ax.set_ylabel('X 纵向坐标 (m) - 上前(+) 下后(-) - ISO 8855', fontsize=12, fontweight='bold')
+        ax.set_title(f'RTK轨迹与车辆航向 (ISO 8855坐标系)\n(每{distance_interval*100:.0f}cm显示一个航向箭头)', 
+                    fontsize=14, fontweight='bold')
+        ax.invert_xaxis()  # 反转横轴，使左正右负
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.legend(loc='best', fontsize=11)
+        ax.axis('equal')
+        
+        # 添加文字信息
+        total_distance = sum(np.sqrt((x_coords[i] - x_coords[i-1])**2 + 
+                                     (y_coords[i] - y_coords[i-1])**2) 
+                            for i in range(1, len(x_coords)))
+        
+        info_text = f'Total Distance: {total_distance:.2f}m\n'
+        info_text += f'Heading Arrows: {arrow_count} (every {distance_interval*100:.0f}cm)\n'
+        info_text += f'Heading Range: {np.degrees(headings.min()):.1f}° ~ {np.degrees(headings.max()):.1f}°'
+        
+        ax.text(0.02, 0.98, info_text, transform=ax.transAxes, 
+               fontsize=10, verticalalignment='top',
+               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"\n✓ Figure saved to: {save_path}")
+        
+        # 打印箭头信息
+        print(f"\n📊 航向箭头显示统计:")
+        print(f"  显示间隔：{distance_interval*100:.0f} cm")
+        print(f"  箭头数量：{arrow_count} 个")
+        print(f"  轨迹总长：{total_distance:.2f} m")
+        
+        plt.show()
+    
     def save_to_csv(self, csv_path: str, include_unstable: bool = False) -> None:
         """
         保存轨迹数据为CSV文件
@@ -854,6 +1087,48 @@ class RTKTrajectoryPlotter:
                     ])
                 
                 writer.writerow(row)
+    
+    def _draw_coordinate_system(self, ax, origin=(0, 0), scale=1.0, arrow_width=2):
+        """
+        在图表上绘制坐标系箭头（ISO 8855标准）
+        
+        参数:
+            ax: matplotlib axes对象
+            origin: 原点位置 (y, x) - 注意：已转换为(y_min, x_min)
+            scale: 箭头长度缩放因子
+            arrow_width: 箭头宽度
+            
+        注意：
+            - Y轴箭头在水平方向（红色）- 左正右负
+            - X轴箭头在垂直方向（绿色）- 上前下后
+        """
+        # 获取轴的当前范围
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        x_range = xlim[1] - xlim[0]
+        y_range = ylim[1] - ylim[0]
+        
+        # 箭头长度（轴长度的10%）
+        arrow_len = max(x_range, y_range) * 0.1 * scale
+        
+        # Y轴箭头在水平方向（红色）- 因为水平轴表示Y坐标
+        # Y轴：左正(+) 右负(-)，所以箭头指向左侧（正方向）
+        arrow_y = FancyArrowPatch(origin, (origin[0] + arrow_len, origin[1]),
+                                arrowstyle='->', mutation_scale=20, linewidth=arrow_width,
+                                color='red', zorder=10)
+        ax.add_patch(arrow_y)
+        ax.text(origin[0] - arrow_len*1.2, origin[1] - 0.5, 'Y+ (左)', fontsize=10, color='red', fontweight='bold', ha='right')
+        
+        # X轴箭头在垂直方向（绿色）- 因为垂直轴表示X坐标
+        # X轴：上前(+) 下后(-)，所以箭头指向上方（正方向）
+        arrow_x = FancyArrowPatch(origin, (origin[0], origin[1] + arrow_len),
+                                arrowstyle='->', mutation_scale=20, linewidth=arrow_width,
+                                color='green', zorder=10)
+        ax.add_patch(arrow_x)
+        ax.text(origin[0] - 0.5, origin[1] + arrow_len*1.1, 'X+ (前)', fontsize=10, color='green', fontweight='bold', ha='right')
+        
+        # 原点标记
+        ax.plot(origin[0], origin[1], 'k+', markersize=15, markeredgewidth=2, zorder=10)
         
         count = len([p for p in self.trajectory if not p['is_before_stable'] or include_unstable])
         print(f"✓ CSV file saved successfully with {count} points!")
@@ -1126,9 +1401,9 @@ if __name__ == "__main__":
     else:
         # 尝试在当前目录或项目目录中查找 rtk_can.csv
         possible_paths = [
-            "rtk_can.csv",
-            "../rtk_can.csv",
-            "../../rtk_can.csv",
+            "rtk_data.csv",
+            "../rtk_data.csv",
+            "../../rtk_data.csv",
             "/Users/alex/workspace/code_review/vehicle_localization/rtk_data.csv"
         ]
         

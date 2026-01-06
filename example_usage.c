@@ -354,7 +354,12 @@ int main()
     printf("   wheel_calibration_factor: %.8f\n", calibration.wheel_calibration_factor);
     printf("   steering_angle_offset: %.8f rad\n", calibration.steering_angle_offset);
     printf("   steering_angle_gain: %.8f\n\n", calibration.steering_angle_gain);
-    localization_system_set_calibration(&localization_sys, &calibration);
+    
+    /* 应用标定参数，置信度设为1.0（使用该参数） */
+    int ret_calib = localization_system_set_calibration(&localization_sys, &calibration, 1.0f);
+    if (ret_calib != 0) {
+        printf("⚠️  标定参数设置失败\n");
+    }
     
     /* === ISO 8855坐标系配置确认 === */
     printf("═══════════════════════════════════════════════════════\n");
@@ -454,7 +459,9 @@ int main()
         
         /* 获取诊断信息 */
         DiagnosticsInfo_t diag = localization_system_get_diagnostics(&localization_sys);
-        
+
+        // 保留卡尔曼滤波器的转向估计，不再用原始传感器值覆盖
+        // 如果需要记录原始方向盘角，可在 CSV 中新增一列进行保存（debug用途）
         /* 打印结果 */
         print_localization_result(step, &estimated_state, &diag);
         save_localization_data(csv_writer,&estimated_state);

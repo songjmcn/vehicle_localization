@@ -321,7 +321,11 @@ int localization_system_process(LocalizationSystem_t *sys,
         }
     }
 
-    float steering_angle = sensor_data->steering.steering_angle;
+    /* 符号转换：输入的转向角约定为"右转>0"（与ISO 8855相反），需要反转符号
+     * 使其符合ISO 8855标准："左转>0"
+     * 这个反转需要在所有转向角处理的源头进行，以保证整个系统的一致性
+     */
+    float steering_angle = -(sensor_data->steering.steering_angle);
     
     /* 
      * 注意：脉冲处理已在上面自动完成
@@ -355,12 +359,18 @@ int localization_system_process(LocalizationSystem_t *sys,
     //VehicleDirection_t vehicle_direction = wheel_direction_to_vehicle_direction(wheel_direction);
     /* ===== 步骤5：使用过滤后的转向角进行卡尔曼滤波 ===== */
     /* 使用低通过滤后的转向角而不是原始值 */
-    //double filtered_steering = sys->kalman_filter.steering_filter.filtered_angle;
-    double filtered_steering = sensor_data->steering.steering_angle;
-    float max_steering_angle = sys->heading_processer.steering_config.max_steering_wheel_angle;
-    if (fabs(filtered_steering) > max_steering_angle) {
-        filtered_steering = clamp(filtered_steering, -max_steering_angle, max_steering_angle);
+    // 使用转向模型在入口完成方向盘角->前轮角的映射与校准
+    // 从传感器读取并按照 ISO 约定翻转符号（右转>0 -> 左转>0）作为输入给转向模型
+    float wheel_angle_iso = -(sensor_data->steering.steering_angle);
+    // steering_jitter_filter 已更新过，继续使用转向模型输出作为前轮角
+    // steering_model_update 返回校准/滤波后的前轮角（float，rad）
+    float front_wheel_angle = steering_model_update(&sys->heading_processer, wheel_angle_iso, sensor_data->timestamp);
+    // 确保不超过前轮角的物理极限
+    float max_front = sys->heading_processer.steering_config.max_front_wheel_angle;
+    if (fabsf(front_wheel_angle) > max_front) {
+        front_wheel_angle = clamp(front_wheel_angle, -max_front, max_front);
     }
+    double filtered_steering = (double)front_wheel_angle; /* 供 EKF 使用的前轮角（以 rad 为单位） */
     
     /* 设置档位信息到滤波器（从 sensor_data 获取） */
     if (current_gear != GEAR_INVALID) {
@@ -398,6 +408,8 @@ int localization_system_process(LocalizationSystem_t *sys,
      */
     SensorReadings_t sensor_data_with_corrected_velocity = *sensor_data;
     sensor_data_with_corrected_velocity.wheel_odometry.velocity = velocity;  /* 用处理后的脉冲速度覆盖原始速度 */
+    /* 将传入给卡尔曼更新的转向测量替换为已校准的前轮角（语义统一） */
+    sensor_data_with_corrected_velocity.steering.steering_angle = front_wheel_angle;
 
     /* 更新步骤 */
     kalman_filter_update(&sys->kalman_filter, &sensor_data_with_corrected_velocity);
@@ -451,14 +463,25 @@ DiagnosticsInfo_t localization_system_get_diagnostics(const LocalizationSystem_t
 }
 
 /**
- * @brief 手动设置校准参数
+ * @brief 手动设置校准参数（带置信度门槛）
  * 
  * 应用外部标定系统（如RTKCalibrationSystem_t）计算的校准参数
+ * @param sys 系统指针
+ * @param calibration 校准参数
+ * @param confidence 离线标定置信度分数 [0,1]，如果小于阈值则拒绝应用
+ * @return 0 应用成功，-1 拒绝或失败
  */
-void localization_system_set_calibration(LocalizationSystem_t *sys,
-                                        const CalibrationParams_t *calibration) {
+int localization_system_set_calibration(LocalizationSystem_t *sys,
+                                        const CalibrationParams_t *calibration,
+                                        float confidence) {
     if (!sys || !calibration) {
-        return;
+        return -1;
+    }
+    
+    /* 置信度阈值检查 */
+    const float CONFIDENCE_THRESHOLD = 0.5f;  /* 50% 最小置信度 */
+    if (confidence < CONFIDENCE_THRESHOLD) {
+        return -1;  /* 拒绝应用参数 */
     }
     
     sys->calibration = *calibration;
@@ -467,6 +490,8 @@ void localization_system_set_calibration(LocalizationSystem_t *sys,
     /* Phase 2 (P1) RTK校准集成：应用转向模型的校准参数 */
     /* 将 CalibrationParams_t 的转向参数应用到转向模型 */
     steering_model_apply_rtk_calibration(&sys->heading_processer, calibration);
+    
+    return 0;  /* 成功应用 */
 }
 
 void localization_system_reset(LocalizationSystem_t *sys,

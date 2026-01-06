@@ -120,8 +120,16 @@ DiagnosticsInfo_t localization_system_get_diagnostics(const LocalizationSystem_t
  * @param sys 系统指针
  * @param calibration 校准参数
  */
-void localization_system_set_calibration(LocalizationSystem_t *sys,
-                                        const CalibrationParams_t *calibration);
+/**
+ * @brief 手动设置校准参数（带置信度门槛）
+ * @param sys 系统指针
+ * @param calibration 校准参数
+ * @param confidence 离线标定置信度分数 [0,1]，如果小于阈值则拒绝应用
+ * @return 0 应用成功，-1 拒绝或失败
+ */
+int localization_system_set_calibration(LocalizationSystem_t *sys,
+                                        const CalibrationParams_t *calibration,
+                                        float confidence);
 
 /**
  * @brief 重置定位系统

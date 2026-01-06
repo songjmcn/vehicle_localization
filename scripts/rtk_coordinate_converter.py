@@ -108,31 +108,32 @@ class CoordinateConverter:
         theta = self.origin_heading * DEG_TO_RAD
 
         # 旋转矩阵（从ENU到车体坐标）：
-        # [x_body]   [sin(θ)   cos(θ)] [x_enu (东)]
-        # [y_body] = [-cos(θ)  sin(θ)] [y_enu (北)]
+        # [x_body]   [sin(θ)   cos(θ) ] [x_enu (东)]
+        # [y_body] = [cos(θ)  -sin(θ)] [y_enu (北)]
 
         # 推导：车体X轴指向航向角theta方向
         # 在ENU中，theta角对应的方向向量是(sin(θ), cos(θ))
         # 因此车体X轴在ENU中的分量是(sin(θ), cos(θ))
-        # 车体Y轴垂直于X轴且指向左侧，对应(-cos(θ), sin(θ))
+        # 车体Y轴垂直于X轴且指向左侧，对应(cos(θ), -sin(θ))
 
         x = dx_enu * math.sin(theta) + dy_enu * math.cos(theta)  # 车体前向
-        y = -dx_enu * math.cos(theta) + dy_enu * math.sin(theta)  # 车体左向
+        y = dx_enu * math.cos(theta) - dy_enu * math.sin(theta)  # 车体左向
 
-        # Step 4: 相对航向角（转换到ISO 8855逆时针定义）
-        # GPS中的heading是顺时针为正（北=0°，东=90°）
-        # ISO 8855中的heading是逆时针为正（前=0°，左=90°）
-        # 
-        # 因此相对heading应该取反：
-        # heading_relative = -(heading_GPS - origin_heading)
-        # = origin_heading - heading_GPS
+        # Step 4: 相对航向角（转换到ISO 8855坐标系）
+        # 在车体坐标系中，相对航向 = GPS航向 - 车体原始航向
+        # ISO 8855定义：相对于车前向，逆时针为正
+        # 无需额外的符号反转，直接计算相对角度
         #
-        # 这样当车向左转时（heading_GPS减小），heading_relative为正（ISO 8855左转为正）
-        heading_relative = self.origin_heading - heading
+        # 推导：
+        # - GPS heading是相对于地理北方的角度（顺时针为正）
+        # - 在旋转到车体坐标系后，相对航向就是当前航向与原始航向的差
+        # - 这个差值在车体坐标系中自动满足ISO 8855的逆时针约定
+        heading_relative = heading - self.origin_heading
+        
         # 规范化到 [-180, 180]
         while heading_relative > 180:
             heading_relative -= 360
-        while heading_relative < -180:
+        while heading_relative <= -180:
             heading_relative += 360
         
         return x, y, heading_relative
@@ -315,7 +316,7 @@ def main():
     script_dir = Path(__file__).parent
     project_dir = script_dir.parent
     
-    rtk_file = project_dir / 'rtk_can.csv'
+    rtk_file = project_dir / 'rtk_data.csv'
     vl_file = project_dir / 'vehicle_localization.csv'
     output_file = project_dir / 'rtk_converted.csv'
     

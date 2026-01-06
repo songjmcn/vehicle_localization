@@ -20,7 +20,7 @@ int motion_model_init(SteeringModel_t *mode, SteeringConfig_t *config,SteeringMa
  * @param steering_config 转向模型配置指针（包含转向角转换映射）
  * @param state 当前状态
  * @param velocity 速度 (m/s)
- * @param steering_angle 转向角 (rad)
+ * @param steering_angle 前轮转向角 (front wheel angle, rad)
  * @param dt 时间间隔 (s)
  * @return 预测的新状态
  */
@@ -35,11 +35,12 @@ VehicleState_t motion_model_predict(SteeringModel_t *steering_config,
  *
  * @param state 当前状态
  * @param velocity 速度 (m/s)
- * @param steering_angle 转向角 (rad)
+ * @param steering_angle 前轮转向角 (front wheel angle, rad)
  * @param dt 时间间隔 (s)
  * @param F 输出的雅可比矩阵 [5x5]
  */
 void motion_model_jacobian(const VehicleState_t *state,
+                          SteeringModel_t *steering_config,
                           double velocity,
                           double steering_angle,
                           double dt,
@@ -55,7 +56,7 @@ void motion_model_jacobian(const VehicleState_t *state,
  * @param steering_config 转向模型配置指针
  * @param state 当前状态
  * @param velocity 速度 (m/s) - float
- * @param steering_angle 转向角 (rad) - float
+ * @param steering_angle 前轮转向角 (front wheel angle, rad) - float
  * @param dt 时间间隔 (s) - float
  * @return 预测的新状态
  */
@@ -77,6 +78,7 @@ VehicleState_t motion_model_predict_float(SteeringModel_t *steering_config,
  * @param F 输出的雅可比矩阵 [5x5] - double精度
  */
 void motion_model_jacobian_float(const VehicleState_t *state,
+                                 SteeringModel_t *steering_config,
                                  float velocity,
                                  float steering_angle,
                                  float dt,

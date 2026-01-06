@@ -108,7 +108,10 @@ class VehicleLocalizationVisualizer:
         print(f"   - 总行驶距离: {total_distance:.2f} m")
 
     def plot_trajectory(self, figsize=(12, 8)):
-        """绘制车辆轨迹 (ISO 8855坐标系)"""
+        """绘制车辆轨迹 (ISO 8855坐标系)
+        
+        注意：Y轴为横轴（左正右负），X轴为纵轴（上为前，下为后）
+        """
         fig, ax = plt.subplots(figsize=figsize)
 
         # 绘制轨迹线（Y为水平轴，X为垂直轴）
@@ -135,12 +138,14 @@ class VehicleLocalizationVisualizer:
         self._draw_coordinate_system(ax, origin=(self.df['y'].min(), self.df['x'].min()), scale=0.8)
 
         # 设置标签和标题（Y为水平轴，X为垂直轴）
-        ax.set_xlabel('Y 横向坐标 (m) - ISO 8855', fontsize=12, fontweight='bold')
-        ax.set_ylabel('X 纵向坐标 (m) - ISO 8855', fontsize=12, fontweight='bold')
+        # Y轴：左正右负，所以左侧是正值，右侧是负值
+        ax.set_xlabel('Y 横向坐标 (m) - 左正(+) 右负(-) - ISO 8855', fontsize=12, fontweight='bold')
+        ax.set_ylabel('X 纵向坐标 (m) - 上前(+) 下后(-) - ISO 8855', fontsize=12, fontweight='bold')
+        ax.invert_xaxis()  # 反转横轴，使左正右负
         ax.set_title('车辆定位轨迹 (ISO 8855 后轴中心坐标系)', fontsize=14, fontweight='bold')
         
         # 添加坐标系说明
-        cs_info = f"坐标原点: {self.COORDINATE_SYSTEM['origin']}\n基准: {self.COORDINATE_SYSTEM['description']}"
+        cs_info = f"坐标原点: {self.COORDINATE_SYSTEM['origin']}\nY轴：左正右负 | X轴：上前下后\n基准: {self.COORDINATE_SYSTEM['description']}"
         ax.text(0.02, 0.98, cs_info, transform=ax.transAxes, fontsize=9,
                 verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
         
@@ -163,6 +168,10 @@ class VehicleLocalizationVisualizer:
             origin: 原点位置 (y, x) - 注意：已转换为(y_min, x_min)
             scale: 箭头长度缩放因子
             arrow_width: 箭头宽度
+            
+        注意：
+            - Y轴箭头在水平方向（红色）- 左正右负
+            - X轴箭头在垂直方向（绿色）- 上前下后
         """
         # 获取轴的当前范围
         xlim = ax.get_xlim()
@@ -174,24 +183,30 @@ class VehicleLocalizationVisualizer:
         arrow_len = max(x_range, y_range) * 0.1 * scale
         
         # Y轴箭头在水平方向（红色）- 因为水平轴表示Y坐标
+        # Y轴：左正(+) 右负(-)，所以箭头指向左侧（正方向）
         arrow_y = FancyArrowPatch(origin, (origin[0] + arrow_len, origin[1]),
                                 arrowstyle='->', mutation_scale=20, linewidth=arrow_width,
                                 color='red', zorder=10)
         ax.add_patch(arrow_y)
-        ax.text(origin[0] + arrow_len*1.1, origin[1], 'Y (横向)', fontsize=10, color='red', fontweight='bold')
+        ax.text(origin[0] - arrow_len*1.2, origin[1] - 0.5, 'Y+ (左)', fontsize=10, color='red', fontweight='bold', ha='right')
         
         # X轴箭头在垂直方向（绿色）- 因为垂直轴表示X坐标
+        # X轴：上前(+) 下后(-)，所以箭头指向上方（正方向）
         arrow_x = FancyArrowPatch(origin, (origin[0], origin[1] + arrow_len),
                                 arrowstyle='->', mutation_scale=20, linewidth=arrow_width,
                                 color='green', zorder=10)
         ax.add_patch(arrow_x)
-        ax.text(origin[0], origin[1] + arrow_len*1.1, 'X (纵向)', fontsize=10, color='green', fontweight='bold')
+        ax.text(origin[0] - 0.5, origin[1] + arrow_len*1.1, 'X+ (前)', fontsize=10, color='green', fontweight='bold', ha='right')
         
         # 原点标记
         ax.plot(origin[0], origin[1], 'k+', markersize=15, markeredgewidth=2, zorder=10)
 
     def plot_trajectory_with_heading(self, figsize=(14, 10)):
-        """绘制轨迹并用颜色表示航向角和转向角 (ISO 8855坐标系)"""
+        """绘制轨迹并用颜色表示航向角和转向角 (ISO 8855坐标系)
+        
+        Y轴为横轴：左正右负
+        X轴为纵轴：上前下后
+        """
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
 
         # 左图：轨迹（用航向角着色）
@@ -203,8 +218,8 @@ class VehicleLocalizationVisualizer:
 
         self._draw_coordinate_system(ax1, origin=(self.df['y'].min(), self.df['x'].min()), scale=0.8)
 
-        ax1.set_xlabel('Y 横向坐标 (m) - ISO 8855', fontsize=11, fontweight='bold')
-        ax1.set_ylabel('X 纵向坐标 (m) - ISO 8855', fontsize=11, fontweight='bold')
+        ax1.set_xlabel('Y 横向坐标 (m) - 左正(+) 右负(-)', fontsize=11, fontweight='bold')
+        ax1.set_ylabel('X 纵向坐标 (m) - 上前(+) 下后(-)', fontsize=11, fontweight='bold')
         ax1.set_title('车辆轨迹（按航向角着色）- ISO 8855', fontsize=12, fontweight='bold')
         ax1.grid(True, alpha=0.3)
         ax1.legend(loc='best')
@@ -222,8 +237,8 @@ class VehicleLocalizationVisualizer:
 
         self._draw_coordinate_system(ax2, origin=(self.df['y'].min(), self.df['x'].min()), scale=0.8)
 
-        ax2.set_xlabel('Y 横向坐标 (m) - ISO 8855', fontsize=11, fontweight='bold')
-        ax2.set_ylabel('X 纵向坐标 (m) - ISO 8855', fontsize=11, fontweight='bold')
+        ax2.set_xlabel('Y 横向坐标 (m) - 左正(+) 右负(-)', fontsize=11, fontweight='bold')
+        ax2.set_ylabel('X 纵向坐标 (m) - 上前(+) 下后(-)', fontsize=11, fontweight='bold')
         ax2.set_title('车辆轨迹（按转向角着色）- ISO 8855', fontsize=12, fontweight='bold')
         ax2.grid(True, alpha=0.3)
         ax2.legend(loc='best')
@@ -292,7 +307,11 @@ class VehicleLocalizationVisualizer:
         return fig
 
     def plot_phase_diagram(self, figsize=(12, 8)):
-        """绘制相位图 (ISO 8855坐标系)"""
+        """绘制相位图 (ISO 8855坐标系)
+        
+        Y轴为横轴：左正右负
+        X轴为纵轴：上前下后
+        """
         fig, axes = plt.subplots(2, 2, figsize=figsize)
 
         # X-Y 轨迹（Y为水平轴，X为垂直轴）
@@ -300,8 +319,8 @@ class VehicleLocalizationVisualizer:
         axes[0, 0].scatter(self.df['y'].iloc[0], self.df['x'].iloc[0], c='g', s=100, marker='o', label='起点', zorder=5)
         axes[0, 0].scatter(self.df['y'].iloc[-1], self.df['x'].iloc[-1], c='r', s=100, marker='^', label='终点', zorder=5)
         self._draw_coordinate_system(axes[0, 0], origin=(self.df['y'].min(), self.df['x'].min()), scale=0.5)
-        axes[0, 0].set_xlabel('Y 横向坐标 (m) - ISO 8855', fontsize=10, fontweight='bold')
-        axes[0, 0].set_ylabel('X 纵向坐标 (m) - ISO 8855', fontsize=10, fontweight='bold')
+        axes[0, 0].set_xlabel('Y 横向坐标 (m) - 左正(+) 右负(-)', fontsize=10, fontweight='bold')
+        axes[0, 0].set_ylabel('X 纵向坐标 (m) - 上前(+) 下后(-)', fontsize=10, fontweight='bold')
         axes[0, 0].set_title('X-Y 轨迹 (ISO 8855)', fontsize=11, fontweight='bold')
         axes[0, 0].grid(True, alpha=0.3)
         axes[0, 0].legend()
@@ -319,7 +338,7 @@ class VehicleLocalizationVisualizer:
         # X vs 航向角
         axes[1, 0].scatter(self.df['x'], np.degrees(self.df['heading']),
                            c=range(len(self.df)), cmap='plasma', s=10, alpha=0.6)
-        axes[1, 0].set_xlabel('X 纵向坐标 (m) - ISO 8855', fontsize=10, fontweight='bold')
+        axes[1, 0].set_xlabel('X 纵向坐标 (m) - 上前(+) 下后(-)', fontsize=10, fontweight='bold')
         axes[1, 0].set_ylabel('航向角 (°)', fontsize=10)
         axes[1, 0].set_title('X vs 航向角 (ISO 8855)', fontsize=11, fontweight='bold')
         axes[1, 0].grid(True, alpha=0.3)
@@ -327,7 +346,7 @@ class VehicleLocalizationVisualizer:
         # Y vs 航向角
         axes[1, 1].scatter(self.df['y'], np.degrees(self.df['heading']),
                            c=range(len(self.df)), cmap='inferno', s=10, alpha=0.6)
-        axes[1, 1].set_xlabel('Y 横向坐标 (m) - ISO 8855', fontsize=10, fontweight='bold')
+        axes[1, 1].set_xlabel('Y 横向坐标 (m) - 左正(+) 右负(-)', fontsize=10, fontweight='bold')
         axes[1, 1].set_ylabel('航向角 (°)', fontsize=10)
         axes[1, 1].set_title('Y vs 航向角 (ISO 8855)', fontsize=11, fontweight='bold')
         axes[1, 1].grid(True, alpha=0.3)

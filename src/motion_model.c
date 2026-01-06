@@ -20,7 +20,7 @@
  * 其中：
  *   v = 后轮轴中心纵向速度 (m/s)，来自后轮编码器
  *   ψ = 车身偏航角 (rad)
- *   δ = 前轮转向角 (rad)
+ *   δ = 前轮转向角 (front wheel angle, rad)
  *   δ_eff = sign(v)·δ（后退时自动反向）
  *   L = 轴距 (m)
  *
@@ -148,35 +148,15 @@ VehicleState_t motion_model_predict(SteeringModel_t *steering_config,
      */
     double v_signed = velocity;  /* 使用有符号速度 */
 
-    /* ========== 改进：查询转向映射表 ========== */
-    float left_wheel_angle = steering_angle;
-    float right_wheel_angle = steering_angle;
-    double yaw_rate = 0;
-    if (steering_config->steering_mapping.valid && steering_query_mapping(steering_config, steering_angle, &left_wheel_angle, &right_wheel_angle) == 0) {
-        //使用映射表查询车辆转角
-        /* 检查是否使用Ackermann模型 */
-        double left_delta_diff = fabs(left_wheel_angle - right_wheel_angle);
-        if (left_delta_diff > 0.001) {
-            /* Ackermann模型：考虑左右轮转角差异 */
-            /* yaw_rate = v * (tan(delta_left) + tan(delta_right)) / (2*L) */
-            /* 注意：v_signed的符号自动处理倒车方向，转向角使用原始值 */
-            double tan_left = tan(left_wheel_angle);
-            double tan_right = tan(right_wheel_angle);
-            yaw_rate = v_signed * (tan_left + tan_right) / (2.0 * steering_config->steering_config.wheelbase);
-        } else {
-            /* 单轨模型：左右轮转角相同 */
-            /* yaw_rate = v * tan(delta) / L */
-            double tan_delta = tan(right_wheel_angle);
-            yaw_rate = v_signed * tan_delta / steering_config->steering_config.wheelbase;
-        }
-    }
-    else {
-        //使用齿比计算车辆转角
-        double front_wheel_angle = steering_wheel_to_front_wheel(steering_config,steering_angle);
-        /* 使用原始转向角，v_signed的符号自动处理倒车方向 */
-        double tan_delta = tan(front_wheel_angle);
-        yaw_rate = v_signed * tan_delta / steering_config->steering_config.wheelbase;
-    }
+    /* ========== 改进：参数 steering_angle 语义已统一为前轮转向角 ========== */
+    /* 现在 motion_model 接收的 steering_angle 已为前轮转向角（front_wheel_angle）
+     * 因此直接使用该值计算 yaw_rate，不再从方向盘角做映射
+     */
+    // float left_wheel_angle = steering_angle;
+    // float right_wheel_angle = steering_angle;
+    double front_wheel_angle = steering_angle;
+    double tan_delta = tan(front_wheel_angle);
+    double yaw_rate = v_signed * tan_delta / steering_config->steering_config.wheelbase;
     double heading_change = yaw_rate * dt;
     double new_heading = state->heading + heading_change;
     
@@ -222,7 +202,8 @@ VehicleState_t motion_model_predict(SteeringModel_t *steering_config,
     new_state.heading = normalize_angle(new_heading);
     
     new_state.v = velocity;
-    new_state.steering_angle = steering_angle;
+    //new_state.steering_angle = steering_angle;
+    new_state.steering_angle = steering_angle;  /* 使用前轮转向角 */
     new_state.gear = state->gear;
     new_state.direction = direction;
     
@@ -233,6 +214,7 @@ VehicleState_t motion_model_predict(SteeringModel_t *steering_config,
  * @brief 计算雅可比矩阵
  */
 void motion_model_jacobian(const VehicleState_t *state,
+                          SteeringModel_t *steering_config,
                           double velocity,
                           double steering_angle,
                           double dt,
@@ -304,10 +286,11 @@ void motion_model_jacobian(const VehicleState_t *state,
         double tan_delta = tan(steering_angle);
         
         /* ∂θ/∂v = tan(δ)·dt/L   （velocity已包含符号） */
-        F[2][3] = tan_delta / WHEELBASE * dt;
-        
+        double L = steering_config->steering_config.wheelbase;
+        F[2][3] = tan_delta / L * dt;
+
         /* ∂θ/∂δ = v·dt/(L·cos²(δ))   （velocity已包含符号） */
-        F[2][4] = velocity / (WHEELBASE * cos_delta * cos_delta) * dt;
+        F[2][4] = velocity / (L * cos_delta * cos_delta) * dt;
     }
 }
 
@@ -342,6 +325,7 @@ VehicleState_t motion_model_predict_float(SteeringModel_t *steering_config,
  * 内部将float参数转换为double后调用原有的double版本函数
  */
 void motion_model_jacobian_float(const VehicleState_t *state,
+                                 SteeringModel_t *steering_config,
                                  float velocity,
                                  float steering_angle,
                                  float dt,
@@ -349,9 +333,10 @@ void motion_model_jacobian_float(const VehicleState_t *state,
     if (!state || !F) {
         return;
     }
-    
+
     /* 转换float为double并调用原有函数 */
     motion_model_jacobian(state,
+                         steering_config,
                          (double)velocity,
                          (double)steering_angle,
                          (double)dt,

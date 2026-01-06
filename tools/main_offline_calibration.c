@@ -10,20 +10,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define MAX_POINTS 10000
 
 int main(int argc, char *argv[]) {
-    if (argc != 4) {
-        fprintf(stderr, "Usage: %s <odometry_csv> <rtk_csv> <output_json>\n", argv[0]);
+    if (argc < 4 || argc > 5) {
+        fprintf(stderr, "Usage: %s <odometry_csv> <rtk_csv> <output_json> [--auto-shift]\n", argv[0]);
         fprintf(stderr, "\nExample:\n");
-        fprintf(stderr, "  %s vehicle_localization.csv rtk_converted.csv calibration_result.json\n\n", argv[0]);
+        fprintf(stderr, "  %s vehicle_localization.csv rtk_converted.csv calibration_result.json --auto-shift\n\n", argv[0]);
         return 1;
     }
-    
+
     const char *odo_file = argv[1];
     const char *rtk_file = argv[2];
     const char *json_file = argv[3];
+    int do_auto_shift = 0;
+    if (argc == 5 && strcmp(argv[4], "--auto-shift") == 0) {
+        do_auto_shift = 1;
+    }
     
     printf("╔════════════════════════════════════════════════════════════════╗\n");
     printf("║     离线标定工具 (Offline Calibration Tool) v1.0               ║\n");
@@ -70,6 +75,81 @@ int main(int argc, char *argv[]) {
     printf("\n📍 第2步：数据对齐与同步 (Step 2: Data alignment)\n");
     printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     
+    /* 自动搜索时间偏移（可选）: 粗搜索 -> 细搜索 */
+    if (do_auto_shift) {
+        printf("🔎 自动时间偏移搜索已启用 (Auto time-shift search)\n");
+        double best_shift = 0.0;
+        double best_score = INFINITY;
+
+        /* 1) 粗略搜索：-2.0s 到 +2.0s，步长 0.1s */
+        for (double s = -2.0; s <= 2.0; s += 0.1) {
+            /* 创建临时里程计副本并应用偏移（秒->ms） */
+            OdometryMeasurement_t *tmp_odo = malloc(sizeof(OdometryMeasurement_t) * odo_count);
+            if (!tmp_odo) break;
+            for (int i = 0; i < odo_count; ++i) {
+                tmp_odo[i] = odo_data[i];
+                int64_t shift_ms = (int64_t)llround(s * 1000.0);
+                tmp_odo[i].timestamp_ms = (uint64_t)((int64_t)tmp_odo[i].timestamp_ms + shift_ms);
+            }
+
+            CalibrationPoint_t *tmp_points = malloc(sizeof(CalibrationPoint_t) * MAX_POINTS);
+            if (!tmp_points) { free(tmp_odo); break; }
+            int matched = align_measurements(tmp_odo, odo_count, rtk_data, rtk_count, tmp_points, MAX_POINTS);
+            double score = INFINITY;
+            if (matched >= 10) {
+                CalibrationStats_t tmp_stats;
+                if (compute_calibration_stats(tmp_points, matched, &tmp_stats) == 0) {
+                    score = tmp_stats.position_error_mean;
+                }
+            }
+            if (score < best_score) {
+                best_score = score;
+                best_shift = s;
+            }
+
+            free(tmp_odo);
+            free(tmp_points);
+        }
+
+        /* 2) 细化搜索：在 best_shift +/-0.2s 内以 0.01s 步长搜索 */
+        double fine_start = best_shift - 0.2;
+        double fine_end = best_shift + 0.2;
+        for (double s = fine_start; s <= fine_end; s += 0.01) {
+            OdometryMeasurement_t *tmp_odo = malloc(sizeof(OdometryMeasurement_t) * odo_count);
+            if (!tmp_odo) break;
+            for (int i = 0; i < odo_count; ++i) {
+                tmp_odo[i] = odo_data[i];
+                int64_t shift_ms = (int64_t)llround(s * 1000.0);
+                tmp_odo[i].timestamp_ms = (uint64_t)((int64_t)tmp_odo[i].timestamp_ms + shift_ms);
+            }
+
+            CalibrationPoint_t *tmp_points = malloc(sizeof(CalibrationPoint_t) * MAX_POINTS);
+            if (!tmp_points) { free(tmp_odo); break; }
+            int matched = align_measurements(tmp_odo, odo_count, rtk_data, rtk_count, tmp_points, MAX_POINTS);
+            double score = INFINITY;
+            if (matched >= 10) {
+                CalibrationStats_t tmp_stats;
+                if (compute_calibration_stats(tmp_points, matched, &tmp_stats) == 0) {
+                    score = tmp_stats.position_error_mean;
+                }
+            }
+            if (score < best_score) {
+                best_score = score;
+                best_shift = s;
+            }
+
+            free(tmp_odo);
+            free(tmp_points);
+        }
+
+        printf("最佳时间偏移: %.3f s, 平均位置误差: %.6f m\n", best_shift, best_score == INFINITY ? -1.0 : best_score);
+        /* 将最优偏移应用到原始里程计数据（就地修改） */
+        int64_t best_shift_ms = (int64_t)llround(best_shift * 1000.0);
+        for (int i = 0; i < odo_count; ++i) {
+            odo_data[i].timestamp_ms = (uint64_t)((int64_t)odo_data[i].timestamp_ms + best_shift_ms);
+        }
+    }
+
     int aligned_count = align_measurements(odo_data, odo_count, rtk_data, rtk_count,
                                            calib_points, MAX_POINTS);
     if (aligned_count < 10) {

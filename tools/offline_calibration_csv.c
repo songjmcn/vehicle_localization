@@ -396,17 +396,15 @@ int perform_calibration(const CalibrationPoint_t *points, int count, Calibration
     result->wheel_factor_confidence = (added > 20) ? 0.95f : 0.75f;
     result->wheel_factor_uncertainty = 0.01f;
     
-    /* 符号处理说明：
-     * 离线标定计算：heading_error = RTK_heading - VL_heading
+    /* 离线标定计算：heading_error = RTK_heading - VL_heading
      * 存储含义：offset 代表 VL 相对 RTK 的转向误差
-     * 应用公式：cal_steering = raw_steering - offset
-     * 
-     * 为确保参数语义清晰，这里将计算的偏差反转符号后保存：
-     * - 如果 VL 转向过度（+heading_error），offset 应为正（减小转向）
-     * - 如果 VL 转向不足（-heading_error），offset 应为负（增加转向）
+     * 应用公式（runtime）：cal_steering = raw_steering - offset
+     *
+     * 注意：calib_params.steering_angle_offset 已被估计为 median(heading_error - gain*steering)
+     * 因此无需在此处反转符号。直接保存估计值以保证与 runtime 约定一致。
      */
-    result->steering_angle_offset_rad = -1.0f * calib_params.steering_angle_offset;
-    result->steering_angle_offset_deg = -1.0f * (calib_params.steering_angle_offset * 180.0f / (float)M_PI);
+    result->steering_angle_offset_rad = calib_params.steering_angle_offset;
+    result->steering_angle_offset_deg = (calib_params.steering_angle_offset * 180.0f / (float)M_PI);
     result->steering_angle_gain = calib_params.steering_angle_gain;
     result->steering_gain_confidence = (added > 20) ? 0.92f : 0.70f;
     result->steering_gain_uncertainty = 0.02f;
