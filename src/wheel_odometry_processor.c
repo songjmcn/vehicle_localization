@@ -188,12 +188,21 @@ int wheel_odometry_processor_update(WheelOdometryProcessor_t *processor,
     /* 解决方案A：脉冲小数部分累积，保留到下次计算 */
     float pulse_delta_float = (float)(left_delta + right_delta) / 2.0f + processor->pulse_residual;
     int32_t pulse_delta = (int32_t)floorf(pulse_delta_float);
+    //异常检测左右轮归零
+    if(left_delta > 5 || right_delta > 5){
+        // 在 LEV 项目中，5个脉冲会导致 5.7m/s 的速度，这已经是非常高的速度了,说明脉冲跳变异常
+        printf(
+            "Warning: Large pulse delta detected: left_delta=%d, right_delta=%d, pulse_delta=%d\n",
+            left_delta, right_delta, pulse_delta
+        );
+        return -2;
+    }
     processor->pulse_residual = pulse_delta_float - (float)pulse_delta;
 
-#ifdef DEBUG
-    printf("Pulse calculation: left_delta=%d, right_delta=%d, pulse_delta_float=%f, pulse_delta=%d, residual=%f\n",
-           left_delta, right_delta, pulse_delta_float, pulse_delta, processor->pulse_residual);
-#endif
+// #ifdef DEBUG
+//     printf("Pulse calculation: left_delta=%d, right_delta=%d, pulse_delta_float=%f, pulse_delta=%d, residual=%f\n",
+//            left_delta, right_delta, pulse_delta_float, pulse_delta, processor->pulse_residual);
+// #endif
 
     /* 保存当前的左右轮脉冲计数 */
     processor->last_left_pulse_count = left_pulse_count;
@@ -283,10 +292,10 @@ int wheel_odometry_processor_update(WheelOdometryProcessor_t *processor,
     /* === 累加距离 === */
     processor->accumulated_distance += final_distance_delta;
 
-#ifdef DEBUG
-    printf("wheel direction:%d, pulse_delta:%d, raw_velocity:%f, distance_delta:%lf, signed_velocity:%f, accumulated:%lf\n",
-           direction, pulse_delta, raw_velocity, final_distance_delta, signed_velocity, processor->accumulated_distance);
-#endif
+// #ifdef DEBUG
+//     printf("wheel direction:%d, pulse_delta:%d, raw_velocity:%f, distance_delta:%lf, signed_velocity:%f, accumulated:%lf\n",
+//            direction, pulse_delta, raw_velocity, final_distance_delta, signed_velocity, processor->accumulated_distance);
+// #endif
 
     /* 保存状态 */
     processor->last_pulse_count = pulse_count;

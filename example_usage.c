@@ -163,10 +163,10 @@ bool load_csv_data(const char *filename,VehicleDataArray *vehicle_data_array){
             char *saveptr = NULL;
             char *fields[11] = {0};
             int idx = 0;
-            char *token = strtok_r(line, ";\r\n", &saveptr);
+            char *token = strtok_r(line, ",\r\n", &saveptr);
             while (token != NULL && idx < 11) {
                 fields[idx++] = token;
-                token = strtok_r(NULL, ";\r\n", &saveptr);
+                token = strtok_r(NULL, ",\r\n", &saveptr);
             }
             ret = idx; /* parsed field count */
             if (ret >= 11) {
@@ -249,20 +249,23 @@ FILE* create_csv_file(const char* file_path) {
     if (f==NULL) {
         return f;
     }
-    fprintf(f,"x;y;heading;steering angle;gear;timestamp\r\n");
+    fprintf(f,"x,y,heading,steering_angle,gear,imu_acce_x,imu_acce_y,imu_acce_z,timestamp\r\n");
     return f;
 }
-bool save_localization_data(FILE *f,VehicleState_t *state){
+bool save_localization_data(FILE *f,const VehicleState_t *state,SensorReadings_t *sensor_data){
     if(f==NULL || state==NULL){
         return false;
     }
-    fprintf(f,"%.3f;%.3f;%.3f;%.3f;%s;%llu\r\n",
+    fprintf(f,"%.3f,%.3f,%.3f,%.3f,%s,%.3f,%.3f,%.3f,%lf\r\n",
             state->x,
             state->y,
             state->heading,
             state->steering_angle,
             gear2str(state->gear),
-            state->timestamp);
+            sensor_data->imu.accel_x,
+            sensor_data->imu.accel_y,
+            sensor_data->imu.accel_z,
+            ((double)state->timestamp)/1000.0);
     return true;
 }
 /* 简单 JSON 数字解析（只查找键并解析冒号后的数字） */
@@ -279,7 +282,7 @@ static double parse_json_number(const char *buf, const char *key) {
     return v;
 }
 LocalizationSystem_t localization_sys;
-int main()
+int main(int argc, char **argv)
 {
 
     /* 初始化定位系统 */
@@ -305,8 +308,8 @@ int main()
 
     CalibrationParams_t calibration = {0};
     /* 默认值（保留原示例的默认参数） */
-    calibration.wheel_calibration_factor = 0.80000001f;
-    calibration.steering_angle_offset = 0.02528761f;
+    calibration.wheel_calibration_factor = 1.0f;
+    calibration.steering_angle_offset = 0.0f;
     calibration.steering_angle_gain = 1.0f;
     calibration.imu_accel_bias_x = 0.0f;
     calibration.imu_accel_bias_y = 0.0f;
@@ -316,7 +319,7 @@ int main()
     calibration.imu_lateral_accel_bias = 0.0f;
     calibration.imu_lateral_accel_scale = 1.0f;
 
-    FILE *cf = fopen("calibration.json", "r");
+    FILE *cf = fopen("/Users/alex/workspace/code_review/vehicle_localization/calibration.json", "r");
     if (cf) {
         fseek(cf, 0, SEEK_END);
         long sz = ftell(cf);
@@ -342,6 +345,8 @@ int main()
                 if (!isnan(v)) calibration.imu_accel_scale_x = (float)v;
                 v = parse_json_number(buf, "\"imu_accel_scale_y\"");
                 if (!isnan(v)) calibration.imu_accel_scale_y = (float)v;
+                v = parse_json_number(buf, "\"ackermann_factor\"");
+                if (!isnan(v)) calibration.ackermann_factor = (float)v;
             }
             free(buf);
         }
@@ -411,20 +416,46 @@ int main()
     uint32_t accumulated_pulses = 0;
     (void)accumulated_pulses;  /* 此示例中未使用，保留供用户参考 */
     VehicleDataArray vehicle_data_array={0};
-    ret = load_csv_data("vehicle_data.csv",&vehicle_data_array);
+    const char *csv_file = "vehicle_data.csv";
+    const char *localization_csv_file = "vehicle_localization.csv";
+    if(argc >=3){
+        for (int i=0;i<argc;i++){
+            if(strcmp(argv[i],"--input")==0 && (i+1)<argc){
+                csv_file = argv[i+1];
+                i+=1;
+            }
+            else if(strcmp(argv[i],"-i")==0 && (i+1)<argc){
+                csv_file = argv[i+1];
+                i+=1;
+            }
+            else if(strcmp(argv[i],"--output")==0 && (i+1)<argc){
+                localization_csv_file = argv[i+1];
+                i+=1;
+            }
+            else if (strcmp(argv[i],"-o")==0 && (i+1)<argc){
+                localization_csv_file = argv[i+1];
+                i+=1;
+            }
+
+        }
+    }
+    ret = load_csv_data(csv_file,&vehicle_data_array);
     if(ret==false){
         printf("ERROR: Failed to load vehicle data from vehicle_data.csv!\n");
         return -1;
     }
-    FILE *csv_writer = create_csv_file("vehicle_localization.csv");
+    FILE *csv_writer = create_csv_file(localization_csv_file);
     for (uint32_t step = 0; step < vehicle_data_array.data_count; step++) {
         SensorReadings_t sensor_data;
         memset(&sensor_data, 0, sizeof(sensor_data));
         
         /* 填充IMU数据 */
-        sensor_data.imu.accel_x = vehicle_data_array.data_array[step].imu_accel_x;
-        sensor_data.imu.accel_y = vehicle_data_array.data_array[step].imu_accel_y;
-        sensor_data.imu.accel_z = vehicle_data_array.data_array[step].imu_accel_z;
+        // sensor_data.imu.accel_x = vehicle_data_array.data_array[step].imu_accel_x;
+        // sensor_data.imu.accel_y = vehicle_data_array.data_array[step].imu_accel_y;
+        // sensor_data.imu.accel_z = vehicle_data_array.data_array[step].imu_accel_z;
+        sensor_data.imu.accel_x = 0;
+        sensor_data.imu.accel_y = 0;
+        sensor_data.imu.accel_z = 0;
         sensor_data.imu.timestamp = (uint64_t)(vehicle_data_array.data_array[step].timestamp_s * 1000);
         
         /* 填充转向数据 */
@@ -464,7 +495,7 @@ int main()
         // 如果需要记录原始方向盘角，可在 CSV 中新增一列进行保存（debug用途）
         /* 打印结果 */
         print_localization_result(step, &estimated_state, &diag);
-        save_localization_data(csv_writer,&estimated_state);
+        save_localization_data(csv_writer,&estimated_state,&sensor_data);
     }
     fclose(csv_writer);
     printf("\n───────────────────────────────────────────────────────\n");

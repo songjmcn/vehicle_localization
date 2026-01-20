@@ -12,6 +12,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include "localization_types.h"
 #define __MCU__  // Define MCU for this build
 /**
  * @brief 线性插值辅助函数
@@ -652,12 +653,12 @@ int steering_model_apply_rtk_calibration(SteeringModel_t *config,
     
     /* 由于 void* 指针，我们需要通过 struct 访问 CalibrationParams_t */
     /* 这里定义一个临时结构体指针来访问数据 */
-    typedef struct {
-        float wheel_calibration_factor;
-        float steering_angle_offset;
-        float steering_angle_gain;
-        /* 其他字段不在此处列举 */
-    } CalibrationParams_t;
+    // typedef struct {
+    //     float wheel_calibration_factor;
+    //     float steering_angle_offset;
+    //     float steering_angle_gain;
+    //     /* 其他字段不在此处列举 */
+    // } CalibrationParams_t;
     
     const CalibrationParams_t *calib_params = (const CalibrationParams_t *)calibration;
     
@@ -670,6 +671,7 @@ int steering_model_apply_rtk_calibration(SteeringModel_t *config,
         config->steering_config.steering_angle_gain = 1.0f;
         return -1;
     }
+    config->steering_config.ackermann_factor = calib_params->ackermann_factor;
     
     config->steering_config.steering_angle_gain = calib_params->steering_angle_gain;
     

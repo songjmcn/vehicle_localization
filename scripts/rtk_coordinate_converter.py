@@ -117,26 +117,15 @@ class CoordinateConverter:
         # 车体Y轴垂直于X轴且指向左侧，对应(cos(θ), -sin(θ))
 
         x = dx_enu * math.sin(theta) + dy_enu * math.cos(theta)  # 车体前向
-        y = dx_enu * math.cos(theta) - dy_enu * math.sin(theta)  # 车体左向
+        y = dx_enu * math.cos(theta) + dy_enu * math.sin(theta)  # 车体左向（修正：与车辆本地化一致）
 
-        # Step 4: 相对航向角（转换到ISO 8855坐标系）
-        # 在车体坐标系中，相对航向 = GPS航向 - 车体原始航向
-        # ISO 8855定义：相对于车前向，逆时针为正
-        # 无需额外的符号反转，直接计算相对角度
-        #
-        # 推导：
-        # - GPS heading是相对于地理北方的角度（顺时针为正）
-        # - 在旋转到车体坐标系后，相对航向就是当前航向与原始航向的差
-        # - 这个差值在车体坐标系中自动满足ISO 8855的逆时针约定
-        heading_relative = heading - self.origin_heading
-        
-        # 规范化到 [-180, 180]
-        while heading_relative > 180:
-            heading_relative -= 360
-        while heading_relative <= -180:
-            heading_relative += 360
-        
-        return x, y, heading_relative
+        # Step 4: RTK heading（地理北为0，逆时针为正，0~360）→ 车辆heading（车头为0，左正右负，-180~180）
+        heading_vehicle = 90.0 - heading  # 车辆X轴为正东，Y轴为正北
+        while heading_vehicle > 180:
+            heading_vehicle -= 360
+        while heading_vehicle <= -180:
+            heading_vehicle += 360
+        return x, y, heading_vehicle
 
 
 def read_rtk_data(rtk_file):
@@ -144,7 +133,7 @@ def read_rtk_data(rtk_file):
     data = []
     try:
         with open(rtk_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f, delimiter=';')
+            reader = csv.DictReader(f, delimiter=',')
             for i, row in enumerate(reader):
                 try:
                     entry = {
@@ -176,7 +165,7 @@ def read_vehicle_localization_data(vl_file):
     data = []
     try:
         with open(vl_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f, delimiter=';')
+            reader = csv.DictReader(f, delimiter=',')
             for i, row in enumerate(reader):
                 try:
                     entry = {
@@ -253,7 +242,7 @@ def save_converted_data(converted_data, output_file):
             writer = csv.DictWriter(
                 f,
                 fieldnames=['x', 'y', 'heading', 'heading_rad', 'z', 'quality', 'timestamp'],
-                delimiter=';'
+                delimiter=','
             )
             writer.writeheader()
             writer.writerows(converted_data)

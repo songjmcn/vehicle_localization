@@ -234,12 +234,8 @@ int kalman_filter_init(KalmanFilter_t *kf,
     
     /* 将 float 外部 API 转换为内部 double 精度 */
     VehicleState_internal_t state_internal;
-    NoiseParameters_internal_t noise_internal;
-    CalibrationParams_internal_t calib_internal;
     
     vehicle_state_float_to_internal(initial_state, &state_internal);
-    noise_parameters_float_to_internal(noise, &noise_internal);
-    calibration_params_float_to_internal(calibration, &calib_internal);
     
     /* 初始化状态 (Double 精度存储) */
     kf->state.x_hat[0] = state_internal.x;
@@ -250,11 +246,11 @@ int kalman_filter_init(KalmanFilter_t *kf,
     
     /* 初始化协方差矩阵（合理的初始不确定性） */
     memset(kf->state.P, 0, sizeof(kf->state.P));
-    kf->state.P[0][0] = 10.0;   /* x位置：10米初始不确定性 */
-    kf->state.P[1][1] = 10.0;   /* y位置：10米初始不确定性 */
-    kf->state.P[2][2] = 1.0;    /* heading：1弧度（约57度） */
-    kf->state.P[3][3] = 0.5;    /* velocity：0.5 m/s */
-    kf->state.P[4][4] = 0.2;    /* steering_angle：0.2弧度（约11度） */
+    kf->state.P[0][0] = 0.25;   /* x位置：0.25米初始不确定性 */
+    kf->state.P[1][1] = 0.25;   /* y位置：0.25米初始不确定性 */
+    kf->state.P[2][2] = 0.0076;    /* heading：0.076弧度 */
+    kf->state.P[3][3] = 0.25;    /* velocity：0.5 m/s */
+    kf->state.P[4][4] = 0.076;    /* steering_angle：0.076弧度 */
     
     /* 保存噪声参数和校准参数 (转换为 double) */
     kf->noise = *noise;  /* 复制 float 版本 */
@@ -595,9 +591,9 @@ void kalman_filter_update_basic(KalmanFilter_t *kf,
         }
     }
     
-    /* 正规化角度 */
-    kf->state.x_hat[2] = normalize_angle(kf->state.x_hat[2]);
-    kf->state.x_hat[4] = normalize_angle(kf->state.x_hat[4]);
+    /* 主要不要正规化化角度 */
+    //kf->state.x_hat[2] = normalize_angle(kf->state.x_hat[2]);
+    //kf->state.x_hat[4] = normalize_angle(kf->state.x_hat[4]);
     
     /* 协方差更新：P = (I - K * H) * P */
     double I_KH[5][5];
@@ -845,6 +841,26 @@ void kalman_filter_get_state(const KalmanFilter_t *kf,
     state->timestamp = kf->state.previous_timestamp;
     state->gear = kf->state.previous_gear;
     state->direction = DIRECTION_INVALID;
+}
+
+/**
+ * @brief 获取预测速度（只读访问）
+ * @param kf 滤波器指针
+ * @return 预测速度（m/s），若 kf 为 NULL 或数值异常则返回 0.0
+ * @note 直接读取内部状态向量 kf->state.x_hat[3]（double 精度），
+ *       不会修改滤波器状态；调用方在并发场景需自行同步。
+ */
+double kalman_filter_get_predicted_velocity(const KalmanFilter_t *kf) {
+    if (!kf) {
+        return 0.0;
+    }
+
+    double v = kf->state.x_hat[3];
+    if (isnan(v) || isinf(v)) {
+        return 0.0;
+    }
+
+    return v;
 }
 
 DiagnosticsInfo_t kalman_filter_get_diagnostics(const KalmanFilter_t *kf) {

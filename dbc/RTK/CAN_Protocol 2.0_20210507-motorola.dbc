@@ -34,6 +34,8 @@ NS_ :
 BS_:
 
 BU_: IMU
+VAL_TABLE_ satellite_state_values 9 "RTK浮点解定位 不定向" 8 "RTK稳定解定位 不定向" 7 "伪距差分定位不 定向" 6 "单点定位不定向" 5 "RTK浮点解定位 定向" 4 "RTK稳定解定位 定向" 3 "组合推算" 2 "伪距差分定位定向" 1 "单天线定位定向" 0 "不定位不定向" ;
+VAL_TABLE_ system_state_values 3 "Inertial navigation mode" 2 "Integrated navigation mode" 1 "Satellite navigation mode" 0 "Initing" ;
 
 
 BO_ 814 Latitude: 8 Vector__XXX
@@ -111,6 +113,15 @@ BO_ 801 Ang_Rate_Raw_IMU: 8 IMU
 
 
 
+CM_ SG_ 800 GpsTime "The number of seconds since 0:00:00 GMT this Sunday";
+CM_ SG_ 800 GpsWeek "Number of weeks from 1980-1-6 to the present (Grinidge Time)";
+CM_ SG_ 803 GpsNumSats2 "Number of satellites searched by auxiliary antenna";
+CM_ SG_ 803 GpsNumSats "Number of satellites searched by the main antenna";
+CM_ SG_ 803 GpsAge "Differential delay";
+CM_ SG_ 803 GpsNumSats2Used "The number of satellites used by the auxiliary antenna";
+CM_ SG_ 803 system_state "RTK system working state";
+CM_ SG_ 803 satellite_status "statellite working state";
+CM_ SG_ 803 GpsNumSatsUsed "Number of main antenna satellites used";
 BA_DEF_ SG_  "GenSigSendType" ENUM  "Cyclic","OnWrite","OnWriteWithRepetition","OnChange","OnChangeWithRepetition","IfActive","IfActiveWithRepetition","NoSigSendType";
 BA_DEF_ SG_  "GenSigInactiveValue" INT 0 0;
 BA_DEF_ BO_  "GenMsgCycleTime" INT 0 0;
@@ -138,4 +149,6 @@ BA_DEF_DEF_  "CANoeJitterMin" 0;
 BA_DEF_DEF_  "CANoeDrift" 0;
 BA_DEF_DEF_  "CANoeStartDelay" 0;
 BA_ "DBName" "CANProtocol";
+VAL_ 803 system_state 3 "Inertial navigation mode" 2 "Integrated navigation mode" 1 "Satellite navigation mode" 0 "Initing" ;
+VAL_ 803 satellite_status 9 "RTK浮点解定位 不定向" 8 "RTK稳定解定位 不定向" 7 "伪距差分定位不 定向" 6 "单点定位不定向" 5 "RTK浮点解定位 定向" 4 "RTK稳定解定位 定向" 3 "组合推算" 2 "伪距差分定位定向" 1 "单天线定位定向" 0 "不定位不定向" ;
 

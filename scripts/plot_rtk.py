@@ -195,7 +195,7 @@ class RTKTrajectoryPlotter:
         
         try:
             with open(csv_file, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f, delimiter=';')
+                reader = csv.DictReader(f, delimiter=',')
                 
                 for row_idx, row in enumerate(reader):
                     try:
@@ -751,7 +751,6 @@ class RTKTrajectoryPlotter:
         ax1.set_xlabel('Y 横向坐标 (m) - 左正(+) 右负(-) - ISO 8855', fontsize=11, fontweight='bold')
         ax1.set_ylabel('X 纵向坐标 (m) - 上前(+) 下后(-) - ISO 8855', fontsize=11, fontweight='bold')
         ax1.set_title('RTK轨迹 (俯视图，ISO 8855坐标系) - 稳定第一个点检测', fontsize=12, fontweight='bold')
-        ax1.invert_xaxis()  # 反转横轴，使左正右负
         ax1.grid(True, alpha=0.3)
         ax1.legend(loc='best', fontsize=10)
         ax1.axis('equal')
@@ -1401,10 +1400,7 @@ if __name__ == "__main__":
     else:
         # 尝试在当前目录或项目目录中查找 rtk_can.csv
         possible_paths = [
-            "rtk_data.csv",
-            "../rtk_data.csv",
-            "../../rtk_data.csv",
-            "/Users/alex/workspace/code_review/vehicle_localization/rtk_data.csv"
+            
         ]
         
         csv_file = None

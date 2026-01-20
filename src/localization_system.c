@@ -91,11 +91,11 @@ static int localization_system_init_internal(LocalizationSystem_t *sys,
     
     /* 设置默认噪声参数（heading误差优化版 - A方案） */
     NoiseParameters_t noise = {
-        .q_x = 0.005,       /* 位置x噪声 */
-        .q_y = 0.005,       /* 位置y噪声 */
-        .q_theta = 0.01,    /* 角度噪声 */
-        .q_v = 0.02,        /* 速度噪声（低速时轮滑动较多） */
-        .q_delta = 0.02,    /* 转向角噪声 */
+        .q_x = 0.02,       /* 位置x噪声 */
+        .q_y = 0.02,       /* 位置y噪声 */
+        .q_theta = 0.002,    /* 角度噪声 */
+        .q_v = 0.1,        /* 速度噪声（低速时轮滑动较多） */
+        .q_delta = 0.01,    /* 转向角噪声 */
         .r_wheel = 0.01,    /* 轮速计测量噪声 */
         .r_imu = 0.1,       /* IMU加速度测量噪声 */
         .r_steering = 0.05, /* 转向角测量噪声 */
@@ -122,6 +122,7 @@ static int localization_system_init_internal(LocalizationSystem_t *sys,
         .wheelbase = 2.76,
         .steering_angle_offset = 0,
         .steering_angle_gain = 1.0f,
+        .ackermann_factor = 1.0f,
         .enable_steering_filter = true,
         .steering_filter_alpha = 0.1f,
     };
@@ -303,10 +304,14 @@ int localization_system_process(LocalizationSystem_t *sys,
             /* 使用处理后的轮速数据 */
             velocity = processed_odometry.velocity;
             odometry_distance = processed_odometry.distance;  /* 保存距离 */
-#ifdef DEBUG
-            printf("Odometry: velocity=%f, distance=%f, timestamp=%llu\n",
-                   velocity, odometry_distance, sensor_data->timestamp);
-#endif
+// #ifdef DEBUG
+//             printf("Odometry: velocity=%f, distance=%f, timestamp=%llu\n",
+//                    velocity, odometry_distance, sensor_data->timestamp);
+// #endif
+        }
+        else{
+            // 处理失败，使用 EFK 推测的速度值继续计算
+            velocity = kalman_filter_get_predicted_velocity(&sys->kalman_filter);
         }
     } else {
         /* 使用直接提供的速度值 */
@@ -321,11 +326,9 @@ int localization_system_process(LocalizationSystem_t *sys,
         }
     }
 
-    /* 符号转换：输入的转向角约定为"右转>0"（与ISO 8855相反），需要反转符号
-     * 使其符合ISO 8855标准："左转>0"
-     * 这个反转需要在所有转向角处理的源头进行，以保证整个系统的一致性
+    /* 方向盘左转为正，右转为负，不再做翻转
      */
-    float steering_angle = -(sensor_data->steering.steering_angle);
+    float steering_angle = sensor_data->steering.steering_angle;
     
     /* 
      * 注意：脉冲处理已在上面自动完成
@@ -360,11 +363,9 @@ int localization_system_process(LocalizationSystem_t *sys,
     /* ===== 步骤5：使用过滤后的转向角进行卡尔曼滤波 ===== */
     /* 使用低通过滤后的转向角而不是原始值 */
     // 使用转向模型在入口完成方向盘角->前轮角的映射与校准
-    // 从传感器读取并按照 ISO 约定翻转符号（右转>0 -> 左转>0）作为输入给转向模型
-    float wheel_angle_iso = -(sensor_data->steering.steering_angle);
     // steering_jitter_filter 已更新过，继续使用转向模型输出作为前轮角
     // steering_model_update 返回校准/滤波后的前轮角（float，rad）
-    float front_wheel_angle = steering_model_update(&sys->heading_processer, wheel_angle_iso, sensor_data->timestamp);
+    float front_wheel_angle = steering_model_update(&sys->heading_processer, steering_angle, sensor_data->timestamp);
     // 确保不超过前轮角的物理极限
     float max_front = sys->heading_processer.steering_config.max_front_wheel_angle;
     if (fabsf(front_wheel_angle) > max_front) {

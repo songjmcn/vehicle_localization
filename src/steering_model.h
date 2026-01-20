@@ -31,6 +31,7 @@ typedef struct {
     float wheelbase;                /**< 轴距 (m) */
     float steering_angle_offset;    /**< 转向零偏补偿 (rad) */
     float steering_angle_gain;      /**< 转向角增益补偿 */
+    float ackermann_factor;      /**< Ackermann转向几何因子，默认1.0 */
     bool enable_steering_filter;    /**< 是否启用转向低通滤波 */
     float steering_filter_alpha;    /**< 转向滤波系数 [0,1]，0=无滤波，1=完全滤波 */
     float steering_deadzone;        /**< 转向死区范围 (rad)，<此值认为无转向，默认 0.02 rad (±1.1°) */

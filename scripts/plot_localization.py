@@ -83,7 +83,7 @@ class VehicleLocalizationVisualizer:
         """加载CSV数据"""
         print(f"📂 加载文件: {self.csv_file}")
         # 使用分号作为分隔符
-        self.df = pd.read_csv(self.csv_file, sep=';')
+        self.df = pd.read_csv(self.csv_file, sep=',')
 
         # 数据信息
         print(f"✅ 数据加载完成")
@@ -104,7 +104,7 @@ class VehicleLocalizationVisualizer:
         print(f"   - X范围: {self.df['x'].min():.2f} ~ {self.df['x'].max():.2f} m")
         print(f"   - Y范围: {self.df['y'].min():.2f} ~ {self.df['y'].max():.2f} m")
         print(f"   - 航向角范围: {np.degrees(self.df['heading'].min()):.2f}° ~ {np.degrees(self.df['heading'].max()):.2f}°")
-        print(f"   - 转向角范围: {np.degrees(self.df['steering angle'].min()):.2f}° ~ {np.degrees(self.df['steering angle'].max()):.2f}°")
+        print(f"   - 转向角范围: {np.degrees(self.df['steering_angle'].min()):.2f}° ~ {np.degrees(self.df['steering_angle'].max()):.2f}°")
         print(f"   - 总行驶距离: {total_distance:.2f} m")
 
     def plot_trajectory(self, figsize=(12, 8)):
@@ -229,7 +229,7 @@ class VehicleLocalizationVisualizer:
         cbar.set_label('航向角 (°)', fontsize=10)
 
         # 右图：轨迹（用转向角着色）
-        scatter2 = ax2.scatter(self.df['y'], self.df['x'], c=np.degrees(self.df['steering angle']),
+        scatter2 = ax2.scatter(self.df['y'], self.df['x'], c=np.degrees(self.df['steering_angle']),
                                cmap='RdYlBu_r', s=20, alpha=0.6)
         ax2.plot(self.df['y'], self.df['x'], 'gray', alpha=0.3, linewidth=0.5)
         ax2.plot(self.df['y'].iloc[0], self.df['x'].iloc[0], 'go', markersize=10, label='起点')
@@ -277,7 +277,7 @@ class VehicleLocalizationVisualizer:
         axes[1, 0].grid(True, alpha=0.3)
 
         # 转向角
-        steering_deg = np.degrees(self.df['steering angle'])
+        steering_deg = np.degrees(self.df['steering_angle'])
         axes[1, 1].plot(t, steering_deg, 'orange', linewidth=1.5)
         axes[1, 1].set_ylabel('转向角 (°)', fontsize=10)
         axes[1, 1].set_title('转向角随时间变化', fontsize=11, fontweight='bold')
@@ -328,7 +328,7 @@ class VehicleLocalizationVisualizer:
 
         # 航向角 vs 转向角
         scatter = axes[0, 1].scatter(np.degrees(self.df['heading']),
-                                     np.degrees(self.df['steering angle']),
+                                     np.degrees(self.df['steering_angle']),
                                      c=range(len(self.df)), cmap='viridis', s=10, alpha=0.6)
         axes[0, 1].set_xlabel('航向角 (°)', fontsize=10)
         axes[0, 1].set_ylabel('转向角 (°)', fontsize=10)
@@ -384,7 +384,7 @@ class VehicleLocalizationVisualizer:
         axes[0, 2].legend()
 
         # 转向角直方图
-        steering_deg = np.degrees(self.df['steering angle'])
+        steering_deg = np.degrees(self.df['steering_angle'])
         axes[1, 0].hist(steering_deg, bins=30, color='orange', alpha=0.7, edgecolor='black')
         axes[1, 0].set_xlabel('转向角 (°)', fontsize=10)
         axes[1, 0].set_ylabel('频数', fontsize=10)
@@ -548,8 +548,8 @@ Y 坐标范围:     {self.df['y'].min():.2f} ~ {self.df['y'].max():.2f} m
 航向角范围:     {np.degrees(self.df['heading'].min()):.2f}° ~ {np.degrees(self.df['heading'].max()):.2f}°
   - 平均值:     {np.degrees(self.df['heading'].mean()):.2f}°
 
-转向角范围:     {np.degrees(self.df['steering angle'].min()):.2f}° ~ {np.degrees(self.df['steering angle'].max()):.2f}°
-  - 平均值:     {np.degrees(self.df['steering angle'].mean()):.2f}°
+转向角范围:     {np.degrees(self.df['steering_angle'].min()):.2f}° ~ {np.degrees(self.df['steering_angle'].max()):.2f}°
+  - 平均值:     {np.degrees(self.df['steering_angle'].mean()):.2f}°
 
 📈 运动学模型
 ════════════════════════════════════════════════════════════════════════════════
@@ -618,7 +618,8 @@ Y 坐标范围:     {self.df['y'].min():.2f} ~ {self.df['y'].max():.2f} m
 def main():
     """主函数"""
     csv_file = 'vehicle_localization.csv'
-
+    data_dir = '/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_VerticalParkingInRight_5kph_001'
+    csv_file = os.path.join(data_dir, csv_file)
     # 检查文件是否存在
     if not os.path.exists(csv_file):
         print(f"❌ 文件不存在: {csv_file}")

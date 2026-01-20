@@ -26,11 +26,11 @@ import platform
 # 检测系统并设置中文字体
 system = platform.system()
 if system == 'Darwin':  # macOS
-    # macOS中文字体优先级
+    # macOS中文字体优先级（已验证系统中存在的字体）
     font_list = [
-        'Arial Unicode MS',  # macOS系统字体
+        'Heiti SC',          # 黑体-简（macOS系统字体，已验证存在）
+        'Arial Unicode MS',  # Arial Unicode（已验证存在）
         'Songti SC',         # 宋体
-        'Heiti SC',          # 黑体
         'PingFang SC',       # 苹方体
         'SimHei',            # 黑体（备选）
         'DejaVu Sans'        # 英文备选
@@ -111,17 +111,17 @@ class TrajectoryComparison:
     def load_data(self):
         """加载数据"""
         print(f"📂 加载RTK转换数据: {self.rtk_converted_file}")
-        self.rtk_df = pd.read_csv(self.rtk_converted_file, sep=';')
+        self.rtk_df = pd.read_csv(self.rtk_converted_file, sep=',', skipinitialspace=True)
         print(f"   ✅ RTK转换数据点: {len(self.rtk_df)}")
 
         print(f"📂 加载定位数据: {self.localization_file}")
-        self.loc_df = pd.read_csv(self.localization_file, sep=';')
+        self.loc_df = pd.read_csv(self.localization_file, sep=',', skipinitialspace=True)
         print(f"   ✅ 定位数据点: {len(self.loc_df)}")
 
         # 可选：加载原始RTK数据
         if self.rtk_raw_file and os.path.exists(self.rtk_raw_file):
             print(f"📂 加载原始RTK数据: {self.rtk_raw_file}")
-            self.rtk_raw_df = pd.read_csv(self.rtk_raw_file, sep=';')
+            self.rtk_raw_df = pd.read_csv(self.rtk_raw_file, sep=',')
             print(f"   ✅ 原始RTK数据点: {len(self.rtk_raw_df)}")
 
         # ----- 列名标准化与兼容性处理 -----
@@ -175,13 +175,13 @@ class TrajectoryComparison:
 
     def sync_timestamps(self):
         """同步两个数据源的时间戳"""
-        # RTK转换数据使用 timestamp (秒级，浮点)
+        # 两个数据源的 timestamp 都是秒级时间戳
         rtk_time_base = self.rtk_df['timestamp'].iloc[0]
         self.rtk_df['time_sync'] = self.rtk_df['timestamp'] - rtk_time_base
 
-        # 定位数据使用 timestamp (毫秒级，整数)
+        # 定位数据也是秒级时间戳，直接相减即可
         loc_time_base = self.loc_df['timestamp'].iloc[0]
-        self.loc_df['time_sync'] = (self.loc_df['timestamp'] - loc_time_base) / 1000.0
+        self.loc_df['time_sync'] = self.loc_df['timestamp'] - loc_time_base
 
         print(f"\n⏱️  时间同步:")
         print(f"   RTK时间跨度: {self.rtk_df['time_sync'].min():.2f}s ~ {self.rtk_df['time_sync'].max():.2f}s")
@@ -230,6 +230,25 @@ class TrajectoryComparison:
             'error_distance': error_distance
         })
 
+        # 计算 Heading 误差（如果数据可用）
+        if 'heading_rad' in self.rtk_df.columns and 'heading' in self.loc_df.columns:
+            rtk_heading = self.rtk_df['heading_rad'].values
+            
+            if len(loc_time) > 1:
+                f_loc_heading = interp1d(loc_time, self.loc_df['heading'].values,
+                                        kind='linear', bounds_error=False, fill_value='extrapolate')
+                loc_heading_interp = f_loc_heading(rtk_time)
+            else:
+                loc_heading_interp = self.loc_df['heading'].iloc[0] * np.ones_like(rtk_time)
+            
+            # 计算 heading 误差，考虑角度周期性
+            heading_error_raw = loc_heading_interp - rtk_heading
+            heading_error = np.arctan2(np.sin(heading_error_raw), np.cos(heading_error_raw))
+            
+            self.errors['heading_rtk'] = rtk_heading
+            self.errors['heading_loc'] = loc_heading_interp
+            self.errors['heading_error'] = heading_error
+
         # 打印误差统计
         print(f"   误差统计:")
         print(f"   • 均值误差: {self.errors['error_distance'].mean():.4f} m")
@@ -238,6 +257,14 @@ class TrajectoryComparison:
         print(f"   • 标准差: {self.errors['error_distance'].std():.4f} m")
         print(f"   • 中位数误差: {self.errors['error_distance'].median():.4f} m")
         print(f"   • RMS误差: {np.sqrt(np.mean(self.errors['error_distance']**2)):.4f} m")
+        
+        # 打印 heading 误差统计
+        if 'heading_error' in self.errors.columns:
+            heading_error = self.errors['heading_error'].values
+            print(f"   Heading 误差统计:")
+            print(f"   • 均值误差: {np.mean(heading_error):.4f} rad ({np.degrees(np.mean(heading_error)):.2f}°)")
+            print(f"   • 最大误差: {np.max(np.abs(heading_error)):.4f} rad ({np.degrees(np.max(np.abs(heading_error))):.2f}°)")
+            print(f"   • 标准差: {np.std(heading_error):.4f} rad ({np.degrees(np.std(heading_error)):.2f}°)")
         
         # 🔧 脉冲计数验证（基于wheel_odometry_processor.c的计算）
         self._validate_pulse_counts()
@@ -327,38 +354,36 @@ class TrajectoryComparison:
 
         ax.set_xlabel('Y 坐标 (m) [左正右负]', fontsize=12)
         ax.set_ylabel('X 坐标 (m) [纵轴]', fontsize=12)
+        ax.invert_xaxis()  # 🔧 反转横轴：左正右负
         ax.set_title('RTK轨迹 vs EKF定位轨迹叠加对比\n（ISO 8855车体坐标系，重新定义坐标轴）',
                      fontsize=14, fontweight='bold')
         ax.grid(True, alpha=0.3)
         ax.legend(loc='best', fontsize=11)
         ax.set_aspect('equal')
         
-        # 🔧 设置坐标轴范围：最小值±10，最大值由轨迹范围决定
-        # 横轴（Y坐标）范围
-        y_min = min(-self.rtk_df['y'].min(), -self.loc_df['y'].min())
-        y_max = max(-self.rtk_df['y'].max(), -self.loc_df['y'].max())
+        # 🔧 设置坐标轴范围：基于反演后的坐标计算
+        # 横轴（Y坐标反演后）范围
+        y_rtk_inv = -self.rtk_df['y'].values
+        y_loc_inv = -self.loc_df['y'].values
+        y_min = min(y_rtk_inv.min(), y_loc_inv.min())
+        y_max = max(y_rtk_inv.max(), y_loc_inv.max())
         y_range = y_max - y_min
-        
-        # 如果范围小于20，则强制设定为-10到+10
-        if y_range < 20:
-            xlim_min, xlim_max = -10, 10
-        else:
-            xlim_min, xlim_max = y_min - y_range*0.1, y_max + y_range*0.1
+        print(f"y坐标范围(反演后): {y_min:.2f} ~ {y_max:.2f} (范围: {y_range:.2f} m)")
+        # 动态设置范围，使用统一的缓冲方案：10% 缓冲，最小 1m
+        y_buffer = max(y_range * 0.1, 1.0)
+        xlim_min, xlim_max = y_min - y_buffer, y_max + y_buffer
         
         # 纵轴（X坐标）范围
         x_min = min(self.rtk_df['x'].min(), self.loc_df['x'].min())
         x_max = max(self.rtk_df['x'].max(), self.loc_df['x'].max())
         x_range = x_max - x_min
         
-        # 如果范围小于20，则强制设定为-10到+10
-        if x_range < 20:
-            ylim_min, ylim_max = -10, 10
-        else:
-            ylim_min, ylim_max = x_min - x_range*0.1, x_max + x_range*0.1
+        # 动态设置范围，使用统一的缓冲方案：10% 缓冲，最小 1m
+        x_buffer = max(x_range * 0.1, 1.0)
+        ylim_min, ylim_max = x_min - x_buffer, x_max + x_buffer
         
         ax.set_xlim(xlim_min, xlim_max)
         ax.set_ylim(ylim_min, ylim_max)
-        ax.invert_xaxis()  # 🔧 反转x轴：左正右负
 
         # 添加误差信息文本
         if self.errors is not None:
@@ -369,7 +394,7 @@ class TrajectoryComparison:
 RMS: {np.sqrt(np.mean(self.errors['error_distance']**2)):.4f} m"""
             ax.text(0.02, 0.98, error_text, transform=ax.transAxes, fontsize=10,
                     verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8),
-                    family='monospace')
+                    family='sans-serif')
 
         plt.tight_layout()
         return fig
@@ -430,19 +455,17 @@ RMS: {np.sqrt(np.mean(self.errors['error_distance']**2)):.4f} m"""
         y_min, y_max = np.nanmin(y_all), np.nanmax(y_all)
         y_range = y_max - y_min
         
-        if y_range < 20:
-            xlim_min, xlim_max = -10, 10
-        else:
-            xlim_min, xlim_max = y_min - y_range*0.1, y_max + y_range*0.1
+        # 使用统一的缓冲方案：10% 缓冲，最小 1m
+        y_buffer = max(y_range * 0.1, 1.0)
+        xlim_min, xlim_max = y_min - y_buffer, y_max + y_buffer
         
         # 纵轴（X坐标）范围
         x_min, x_max = np.nanmin(x_all), np.nanmax(x_all)
         x_range = x_max - x_min
         
-        if x_range < 20:
-            ylim_min, ylim_max = -10, 10
-        else:
-            ylim_min, ylim_max = x_min - x_range*0.1, x_max + x_range*0.1
+        # 使用统一的缓冲方案：10% 缓冲，最小 1m
+        x_buffer = max(x_range * 0.1, 1.0)
+        ylim_min, ylim_max = x_min - x_buffer, x_max + x_buffer
         
         ax.set_xlim(xlim_min, xlim_max)
         ax.set_ylim(ylim_min, ylim_max)
@@ -480,22 +503,18 @@ RMS: {np.sqrt(np.mean(self.errors['error_distance']**2)):.4f} m"""
         ax1.grid(True, alpha=0.3)
         ax1.set_aspect('equal')
         
-        # 🔧 设置坐标轴范围
+        # 🔧 设置坐标轴范围，使用统一的缓冲方案：10% 缓冲，最小 1m
         y_min = -self.errors['rtk_y'].max()
         y_max = -self.errors['rtk_y'].min()
         y_range = y_max - y_min
-        if y_range < 20:
-            xlim_min, xlim_max = -10, 10
-        else:
-            xlim_min, xlim_max = y_min - y_range*0.1, y_max + y_range*0.1
+        y_buffer = max(y_range * 0.1, 1.0)
+        xlim_min, xlim_max = y_min - y_buffer, y_max + y_buffer
         
         x_min = self.errors['rtk_x'].min()
         x_max = self.errors['rtk_x'].max()
         x_range = x_max - x_min
-        if x_range < 20:
-            ylim_min, ylim_max = -10, 10
-        else:
-            ylim_min, ylim_max = x_min - x_range*0.1, x_max + x_range*0.1
+        x_buffer = max(x_range * 0.1, 1.0)
+        ylim_min, ylim_max = x_min - x_buffer, x_max + x_buffer
         
         ax1.set_xlim(xlim_min, xlim_max)
         ax1.set_ylim(ylim_min, ylim_max)
@@ -625,7 +644,7 @@ Y误差:
   均值: {self.errors['error_y'].mean():.4f} m
   范围: [{self.errors['error_y'].min():.4f}, {self.errors['error_y'].max():.4f}] m"""
 
-        axes[1, 1].text(0.05, 0.5, stats_text, fontsize=9, family='monospace',
+        axes[1, 1].text(0.05, 0.5, stats_text, fontsize=9,
                         verticalalignment='center',
                         bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
         axes[1, 1].axis('off')
@@ -656,10 +675,10 @@ Y误差:
         axes[0, 1].grid(True, alpha=0.3)
         axes[0, 1].legend()
 
-        # 航向角对比
-        axes[1, 0].plot(t_rtk, self.rtk_df['RTK_heading'], 'b-', linewidth=2, label='RTK 航向角')
-        axes[1, 0].plot(t_loc, np.degrees(self.loc_df['heading']), 'r--', linewidth=2, label='定位 航向角')
-        axes[1, 0].set_ylabel('航向角 (°)', fontsize=11)
+        # 航向角对比（都使用弧度单位）
+        axes[1, 0].plot(t_rtk, self.rtk_df['heading_rad'], 'b-', linewidth=2, label='RTK 航向角 (rad)')
+        axes[1, 0].plot(t_loc, self.loc_df['heading'], 'r--', linewidth=2, label='定位 航向角 (rad)')
+        axes[1, 0].set_ylabel('航向角 (rad)', fontsize=11)
         axes[1, 0].set_title('航向角对比', fontsize=12, fontweight='bold')
         axes[1, 0].grid(True, alpha=0.3)
         axes[1, 0].legend()
@@ -855,10 +874,14 @@ def main():
     • 低速性能：> 0.3 m/s 可用
     """
     # 文件路径
-    rtk_converted_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_converted.csv'
-    localization_file = '/Users/alex/workspace/code_review/vehicle_localization/vehicle_localization.csv'
-    # rtk_raw_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_can.csv'
-    output_dir = '/Users/alex/workspace/code_review/vehicle_localization/scripts/trajectory_comparison'
+    rtk_converted_file = 'rtk_trajectory.csv'
+    localization_file = 'vehicle_localization_new.csv'
+    data_dir = '/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__forward_0_5kph_001'
+    rtk_converted_file = os.path.join(data_dir, rtk_converted_file)
+    localization_file = os.path.join(data_dir, localization_file)
+    # rtk_raw_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_data.csv'
+    output_dir = 'trajectory_comparison'
+    output_dir = os.path.join(data_dir, output_dir)
 
     # 检查文件
     if not os.path.exists(rtk_converted_file):

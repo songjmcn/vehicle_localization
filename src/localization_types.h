@@ -146,8 +146,8 @@ typedef struct {
  * @brief 转向角数据结构体 (外部 API 使用 float 版本)
  */
 typedef struct {
-    float steering_angle;  /**< 转向角 (rad) */
-    float steering_rate;   /**< 转向角速率 (rad/s) */
+    float steering_angle;  /**< 方向盘转角 (rad) */
+    float steering_rate;   /**< 方向盘转角速率 (rad/s) */
     uint64_t timestamp;  /**< 时间戳 (ms) */
 } SteeringData_t;
 
@@ -205,6 +205,7 @@ typedef struct {
     float wheel_calibration_factor;  /**< 轮速计校准因子 */
     float steering_angle_offset;     /**< 转向角零偏 (rad) */
     float steering_angle_gain;       /**< 转向角增益 */
+    float ackermann_factor;          /**< Ackermann转向几何因子 */
     float imu_accel_bias_x;          /**< IMU x轴加速度零偏 */
     float imu_accel_bias_y;          /**< IMU y轴加速度零偏 */
     float imu_gyro_bias_z;           /**< IMU z轴陀螺仪零偏 */

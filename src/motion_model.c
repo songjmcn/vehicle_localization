@@ -155,6 +155,7 @@ VehicleState_t motion_model_predict(SteeringModel_t *steering_config,
     // float left_wheel_angle = steering_angle;
     // float right_wheel_angle = steering_angle;
     double front_wheel_angle = steering_angle;
+    front_wheel_angle = front_wheel_angle + steering_config->steering_config.ackermann_factor *front_wheel_angle *front_wheel_angle *front_wheel_angle;
     double tan_delta = tan(front_wheel_angle);
     double yaw_rate = v_signed * tan_delta / steering_config->steering_config.wheelbase;
     double heading_change = yaw_rate * dt;
@@ -199,7 +200,9 @@ VehicleState_t motion_model_predict(SteeringModel_t *steering_config,
      *   - 标定中heading差>π的数据需特殊处理
      */
     //new_state.heading = state->heading + yaw_rate * dt;
-    new_state.heading = normalize_angle(new_heading);
+
+    //DO NOT call normalize_angle here for better accuracy in kalman filter
+    new_state.heading = new_heading;
     
     new_state.v = velocity;
     //new_state.steering_angle = steering_angle;

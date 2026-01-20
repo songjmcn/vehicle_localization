@@ -110,6 +110,15 @@ void kalman_filter_get_state(const KalmanFilter_t *kf,
                             VehicleState_t *state);
 
 /**
+ * @brief 获取预测速度（估计/预测的线速度分量）
+ * @param kf 滤波器指针
+ * @return 预测速度，单位为 m/s。若 kf 为 NULL 或读取到无效数值，则返回 0.0。
+ * @note 返回值直接读取自内部状态向量 kf->state.x_hat[3]（double 精度），
+ *       不会触发新的预测或更新；在并发场景下调用方需自行同步。
+ */
+double kalman_filter_get_predicted_velocity(const KalmanFilter_t *kf);
+
+/**
  * @brief 获取诊断信息
  * @param kf 滤波器指针
  * @return 诊断信息
