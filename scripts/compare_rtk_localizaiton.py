@@ -826,7 +826,7 @@ Y误差:
             f.write("=" * 70 + "\n")
 
 
-def main():
+def main(rtk_trajectory_file:str,vehicle_localization_file:str,save_dir:str):
     """主函数 - RTK与EKF融合定位系统对比分析
     
     系统架构（与C代码同步）：
@@ -874,14 +874,14 @@ def main():
     • 低速性能：> 0.3 m/s 可用
     """
     # 文件路径
-    rtk_converted_file = 'rtk_trajectory.csv'
-    localization_file = 'vehicle_localization_new.csv'
-    data_dir = '/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__forward_0_5kph_001'
-    rtk_converted_file = os.path.join(data_dir, rtk_converted_file)
-    localization_file = os.path.join(data_dir, localization_file)
+    #rtk_converted_file = 'rtk_trajectory.csv'
+    #localization_file = 'vehicle_localization.csv'
+    data_dir = '/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__forward_0_20kph_001'
+    rtk_converted_file = rtk_trajectory_file
+    localization_file = vehicle_localization_file
     # rtk_raw_file = '/Users/alex/workspace/code_review/vehicle_localization/rtk_data.csv'
-    output_dir = 'trajectory_comparison'
-    output_dir = os.path.join(data_dir, output_dir)
+    # output_dir = 'trajectory_comparison'
+    output_dir = save_dir
 
     # 检查文件
     if not os.path.exists(rtk_converted_file):
@@ -916,4 +916,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(
+        rtk_trajectory_file="/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__forward_0_20kph_001/rtk_trajectory.csv",
+        vehicle_localization_file="/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__forward_0_20kph_001/vehicle_localization.csv",
+        save_dir="/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__forward_0_20kph_001"
+    )

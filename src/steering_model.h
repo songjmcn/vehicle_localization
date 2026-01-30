@@ -28,6 +28,7 @@ typedef struct {
     float steering_ratio;           /**< 方向盘转向比（gear ratio），通常 14-20 */
     float max_steering_wheel_angle; /**< 最大方向盘转角 (rad)，通常 ±π (±180°) */
     float max_front_wheel_angle;    /**< 最大前轮转向角 (rad)，通常 ±0.628 rad (±36°) */
+    float heading_bias;           /**< 车辆航向角零偏补偿 (rad) */
     float wheelbase;                /**< 轴距 (m) */
     float steering_angle_offset;    /**< 转向零偏补偿 (rad) */
     float steering_angle_gain;      /**< 转向角增益补偿 */

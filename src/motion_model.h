@@ -21,13 +21,16 @@ int motion_model_init(SteeringModel_t *mode, SteeringConfig_t *config,SteeringMa
  * @param state 当前状态
  * @param velocity 速度 (m/s)
  * @param steering_angle 前轮转向角 (front wheel angle, rad)
+ * @param yaw_rate 输出：航向角速率指针 (rad/s)，可选
  * @param dt 时间间隔 (s)
  * @return 预测的新状态
  */
-VehicleState_t motion_model_predict(SteeringModel_t *steering_config,
+VehicleState_t motion_model_predict(SteeringModel_t *steering_model,
                                     const VehicleState_t *state,
+                                    float *yaw_rate,
                                     float velocity,
                                     float steering_angle,
+
                                     double dt);
 
 /**
@@ -60,8 +63,9 @@ void motion_model_jacobian(const VehicleState_t *state,
  * @param dt 时间间隔 (s) - float
  * @return 预测的新状态
  */
-VehicleState_t motion_model_predict_float(SteeringModel_t *steering_config,
+VehicleState_t motion_model_predict_float(SteeringModel_t *steering_model,
                                           const VehicleState_t *state,
+                                          float *yaw_rate,
                                           float velocity,
                                           float steering_angle,
                                           float dt);

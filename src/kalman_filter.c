@@ -272,7 +272,7 @@ int kalman_filter_init(KalmanFilter_t *kf,
     kf->fusion_config.enable_adaptive_weighting = false;
     
     /* 初始化转向模型配置为NULL */
-    kf->steering_config = NULL;
+    kf->steering_model = NULL;
     
     return 0;
 }
@@ -302,11 +302,11 @@ int kalman_filter_init_with_mode(KalmanFilter_t *kf,
 /**
  * @brief 设置卡尔曼滤波器的转向模型配置
  */
-int kalman_filter_set_steering_config(KalmanFilter_t *kf, SteeringModel_t *steering_config) {
+int kalman_filter_set_steering_config(KalmanFilter_t *kf, SteeringModel_t *steering_model) {
     if (!kf) {
         return -1;
     }
-    kf->steering_config = steering_config;
+    kf->steering_model = steering_model;
     return 0;
 }
 
@@ -316,8 +316,10 @@ int kalman_filter_set_steering_config(KalmanFilter_t *kf, SteeringModel_t *steer
  */
 void kalman_filter_predict_with_state(KalmanFilter_t *kf,
                                        const VehicleState_t *state_with_direction,
+                                       double *yaw_rate,
                                        double velocity,
                                        double steering_angle,
+
                                        uint64_t timestamp) {
     if (!kf || !state_with_direction || kf->state.previous_timestamp == 0) {
         kf->state.previous_timestamp = timestamp;
@@ -345,20 +347,24 @@ void kalman_filter_predict_with_state(KalmanFilter_t *kf,
     /* 输入的 steering_angle 在入口已被映射为前轮转向角(front_wheel_angle)，因此此处不再重复应用方向盘的偏置/增益校准 */
     double cal_steering = steering_angle; /* 已为前轮转向角 front_wheel_angle */
     /* 使用前轮转向角的极限做钳制 */
-    cal_steering = clamp(cal_steering, -(kf->steering_config->steering_config.max_front_wheel_angle), kf->steering_config->steering_config.max_front_wheel_angle);
+    cal_steering = clamp(cal_steering, -(kf->steering_model->steering_config.max_front_wheel_angle), kf->steering_model->steering_config.max_front_wheel_angle);
     /* 调试输出（保留以便排查） */
-    printf("velocity=%f, front_wheel_angle=%f, cal_velocity=%f\n", velocity, cal_steering, cal_velocity);
+    // printf("velocity=%f, front_wheel_angle=%f, cal_velocity=%f\n", velocity, cal_steering, cal_velocity);
     /* 当前状态（直接使用传入的状态，其中包含已计算的方向） */
     VehicleState_t current_state = *state_with_direction;
     current_state.steering_angle = kf->state.x_hat[4];
+    float yaw_rate_f = 0.0f   ;
 
     /* 运动模型预测 */
-    VehicleState_t predicted_state = motion_model_predict(kf->steering_config,
+    VehicleState_t predicted_state = motion_model_predict(kf->steering_model,
                                                            &current_state,
+                                                           &yaw_rate_f, 
                                                            cal_velocity,
                                                            cal_steering,
                                                            dt);
-    
+    if(yaw_rate){
+        *yaw_rate = (double)yaw_rate_f;
+    }
     /* 更新状态 */
     kf->state.x_hat[0] = predicted_state.x;
     kf->state.x_hat[1] = predicted_state.y;
@@ -370,7 +376,7 @@ void kalman_filter_predict_with_state(KalmanFilter_t *kf,
     /* 计算雅可比矩阵 */
     double F[5][5];
     memset(F, 0, sizeof(F));
-    motion_model_jacobian(&current_state, kf->steering_config, cal_velocity, cal_steering, dt, F);
+    motion_model_jacobian(&current_state, kf->steering_model, cal_velocity, cal_steering, dt, F);
 
     /* 协方差矩阵的预测更新（P = F*P*F^T + Q） */
     double FP[5][5], FPF_T[5][5];
@@ -417,6 +423,7 @@ void kalman_filter_predict_with_state(KalmanFilter_t *kf,
  * 现在调用 kalman_filter_predict_with_state 的简化版本
  */
 void kalman_filter_predict(KalmanFilter_t *kf,
+                          double *yaw_rate,  
                           double velocity,
                           double steering_angle,
                           uint64_t timestamp) {
@@ -437,7 +444,7 @@ void kalman_filter_predict(KalmanFilter_t *kf,
     current_state.direction = DIRECTION_INVALID;  /* 标记未计算 */
 
     /* 调用新函数完成实际工作 */
-    kalman_filter_predict_with_state(kf, &current_state, velocity, steering_angle, timestamp);
+    kalman_filter_predict_with_state(kf, &current_state, yaw_rate , velocity, steering_angle, timestamp);
 }
 
 void kalman_filter_update(KalmanFilter_t *kf,
@@ -947,14 +954,14 @@ int steering_jitter_filter_init(SteeringJitterFilter_t *filter) {
     return 0;
 }
 
-int steering_jitter_filter_update(SteeringJitterFilter_t *filter,const SteeringConfig_t *steering_config,
+int steering_jitter_filter_update(SteeringJitterFilter_t *filter,const SteeringConfig_t *steering_model,
                                    const double steering_angle) {
     if (!filter) {
         return -1;
     }
     
     /* 限制转向角范围 */
-    double clamped_angle = clamp(steering_angle, -steering_config->max_steering_wheel_angle, steering_config->max_steering_wheel_angle);
+    double clamped_angle = clamp(steering_angle, -steering_model->max_steering_wheel_angle, steering_model->max_steering_wheel_angle);
     
     /* 更新低通过滤 */
     if (filter->update_count == 0) {
@@ -1073,18 +1080,21 @@ void steering_jitter_filter_reset(SteeringJitterFilter_t *filter) {
  * 内部将float参数转换为double后调用原有的double版本函数
  */
 void kalman_filter_predict_float(KalmanFilter_t *kf,
+                                 float *yaw_rate,
                                  float velocity,
                                  float steering_angle,
                                  uint64_t timestamp) {
     if (!kf) {
         return;
     }
-    
+    double yaw_rate_dummy;
     /* 转换float为double并调用原有函数 */
     kalman_filter_predict(kf,
+                         &yaw_rate_dummy,                       
                          (double)velocity,
                          (double)steering_angle,
                          timestamp);
+    *yaw_rate = (float)yaw_rate_dummy;
 }
 
 /**

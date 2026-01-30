@@ -77,10 +77,12 @@ int motion_model_init(SteeringModel_t *mode, SteeringConfig_t *config,SteeringMa
  * 5. 更新航向角：heading = heading + yaw_rate·dt
  * 6. 使用有符号速度更新位置
  */
-VehicleState_t motion_model_predict(SteeringModel_t *steering_config,
+VehicleState_t motion_model_predict(SteeringModel_t *steering_model,
                                     const VehicleState_t *state,
+                                    float *yaw_rate_output,
                                     float velocity,
                                     float steering_angle,
+                                    
                                     double dt) {
     VehicleState_t new_state = *state;
     
@@ -114,7 +116,6 @@ VehicleState_t motion_model_predict(SteeringModel_t *steering_config,
         new_state.steering_angle = steering_angle;
         new_state.gear = state->gear;
         new_state.direction = DIRECTION_STATIONARY;
-        //printf("--stationary state\n");
         return new_state;
     }
     
@@ -155,9 +156,15 @@ VehicleState_t motion_model_predict(SteeringModel_t *steering_config,
     // float left_wheel_angle = steering_angle;
     // float right_wheel_angle = steering_angle;
     double front_wheel_angle = steering_angle;
-    front_wheel_angle = front_wheel_angle + steering_config->steering_config.ackermann_factor *front_wheel_angle *front_wheel_angle *front_wheel_angle;
+    front_wheel_angle = front_wheel_angle + steering_model->steering_config.ackermann_factor *front_wheel_angle *front_wheel_angle *front_wheel_angle;
     double tan_delta = tan(front_wheel_angle);
-    double yaw_rate = v_signed * tan_delta / steering_config->steering_config.wheelbase;
+    double yaw_rate = v_signed * tan_delta / steering_model->steering_config.wheelbase;
+    if(yaw_rate_output!=NULL){
+        *yaw_rate_output=yaw_rate; 
+    }
+    // #ifdef DEBUG
+    // printf("motion_model: v_signed=%f, front_wheel_angle=%f, yaw_rate=%f\n", v_signed, front_wheel_angle, yaw_rate);
+    // #endif
     double heading_change = yaw_rate * dt;
     double new_heading = state->heading + heading_change;
     
@@ -170,8 +177,8 @@ VehicleState_t motion_model_predict(SteeringModel_t *steering_config,
      *   2. 物理一致性：位移应使用初始方向而非最终方向
      *   3. 倒车时特别重要：错误的heading导致Y坐标错误累积
      */
-    double cos_term = cos(state->heading);
-    double sin_term = sin(state->heading);
+    double cos_term = cos(new_heading-steering_model->steering_config.heading_bias);
+    double sin_term = sin(new_heading-steering_model->steering_config.heading_bias);
     
     /* 使用有符号速度进行位置更新
      * 当v_signed为负(后退)时：
@@ -243,16 +250,16 @@ void motion_model_jacobian(const VehicleState_t *state,
     
     /* === 优化：直接使用已计算的方向，避免重复计算 === */
     /* 方向由上层 localization_system 在一处计算，这里直接使用 */
-    VehicleDirection_t direction = state->direction;
+    //VehicleDirection_t direction = state->direction;
 
     /* 如果方向未计算（边界情况），进行备选处理 */
-    if (direction == DIRECTION_INVALID) {
-        direction = (fabs(velocity) < V_STATIC_THRESHOLD) ?
-                    DIRECTION_STATIONARY :
-                    ((velocity > 0.0) ? DIRECTION_FORWARD : DIRECTION_REVERSE);
-    }
+    // if (direction == DIRECTION_INVALID) {
+    //     direction = (fabs(velocity) < V_STATIC_THRESHOLD) ?
+    //                 DIRECTION_STATIONARY :
+    //                 ((velocity > 0.0) ? DIRECTION_FORWARD : DIRECTION_REVERSE);
+    // }
     
-    int sign_v = get_sign_v_from_direction(direction);
+    //int sign_v = get_sign_v_from_direction(direction);
     
     /* === 位置关于航向角的偏导 ===
      * 根据ISO 8855运动学方程：
@@ -304,8 +311,9 @@ void motion_model_jacobian(const VehicleState_t *state,
  * 
  * 内部将float参数转换为double后调用原有的double版本函数
  */
-VehicleState_t motion_model_predict_float(SteeringModel_t *steering_config,
+VehicleState_t motion_model_predict_float(SteeringModel_t *steering_model,
                                           const VehicleState_t *state,
+                                          float *yaw_rate,
                                           float velocity,
                                           float steering_angle,
                                           float dt) {
@@ -313,13 +321,16 @@ VehicleState_t motion_model_predict_float(SteeringModel_t *steering_config,
         VehicleState_t empty = {0};
         return empty;
     }
-    
+    double yaw_rate_double = 0.0;
     /* 转换float为double并调用原有函数 */
-    return motion_model_predict(steering_config,
+    VehicleState_t ret =  motion_model_predict(steering_model,
                                state,
+                               &yaw_rate_double,
                                (double)velocity,
                                (double)steering_angle,
                                (double)dt);
+    *yaw_rate = (float)yaw_rate_double;
+    return ret;
 }
 
 /**

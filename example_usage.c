@@ -17,55 +17,55 @@
  * 1. 直行100米
  * 2. 左转90度，后退30米
  */
-void simulate_sensor_data(uint32_t step, SensorReadings_t *sensor_data) {
-    static uint32_t start_time = 0;
-    if (start_time == 0) {
-        start_time = 1000;  /* 从1000ms开始 */
-    }
+// void simulate_sensor_data(uint32_t step, SensorReadings_t *sensor_data) {
+//     static uint32_t start_time = 0;
+//     if (start_time == 0) {
+//         start_time = 1000;  /* 从1000ms开始 */
+//     }
     
-    uint32_t dt = 50;  /* 50ms的时间步长 */
-    uint32_t timestamp = start_time + step * dt;
+//     uint32_t dt = 50;  /* 50ms的时间步长 */
+//     uint32_t timestamp = start_time + step * dt;
     
-    /* 阶段1：直行（0-100m）*/
-    if (step < 2000) {  /* 100秒内直行 */
-        sensor_data->wheel_odometry.velocity = 1.0;  /* 1 m/s */
-        sensor_data->steering.steering_angle = 0.0;  /* 直行 */
-    }
-    /* 阶段2：转向并后退 */
-    else if (step < 2600) {  /* 30秒转向 */
-        sensor_data->wheel_odometry.velocity = 0.5;  /* 0.5 m/s */
-        sensor_data->steering.steering_angle = 0.5;  /* 左转 */
-    }
-    /* 阶段3：停止 */
-    else {
-        sensor_data->wheel_odometry.velocity = 0.0;
-        sensor_data->steering.steering_angle = 0.0;
-    }
+//     /* 阶段1：直行（0-100m）*/
+//     if (step < 2000) {  /* 100秒内直行 */
+//         sensor_data->wheel_odometry.velocity = 1.0;  /* 1 m/s */
+//         sensor_data->steering.steering_angle = 0.0;  /* 直行 */
+//     }
+//     /* 阶段2：转向并后退 */
+//     else if (step < 2600) {  /* 30秒转向 */
+//         sensor_data->wheel_odometry.velocity = 0.5;  /* 0.5 m/s */
+//         sensor_data->steering.steering_angle = 0.5;  /* 左转 */
+//     }
+//     /* 阶段3：停止 */
+//     else {
+//         sensor_data->wheel_odometry.velocity = 0.0;
+//         sensor_data->steering.steering_angle = 0.0;
+//     }
     
-    /* 模拟IMU数据：低速状态下IMU数据较小 */
-    double accel = 0.05;  /* 小的加速度噪声 */
+//     /* 模拟IMU数据：低速状态下IMU数据较小 */
+//     double accel = 0.05;  /* 小的加速度噪声 */
     
-    sensor_data->imu.accel_x = accel * (rand() % 100 - 50) / 50.0;
-    sensor_data->imu.accel_y = accel * (rand() % 100 - 50) / 50.0;
-    sensor_data->imu.accel_z = -9.8;  /* 重力加速度 */
+//     sensor_data->imu.accel_x = accel * (rand() % 100 - 50) / 50.0;
+//     sensor_data->imu.accel_y = accel * (rand() % 100 - 50) / 50.0;
+//     sensor_data->imu.accel_z = -9.8;  /* 重力加速度 */
     
-    /* 陀螺仪数据：基于转向角变化估计 */
-    double steering_rate = 0.01;  /* rad/s */
-    sensor_data->imu.gyro_x = 0.0;
-    sensor_data->imu.gyro_y = 0.0;
-    sensor_data->imu.gyro_z = steering_rate * sin(sensor_data->steering.steering_angle);
+//     /* 陀螺仪数据：基于转向角变化估计 */
+//     double steering_rate = 0.01;  /* rad/s */
+//     sensor_data->imu.gyro_x = 0.0;
+//     sensor_data->imu.gyro_y = 0.0;
+//     sensor_data->imu.gyro_z = steering_rate * sin(sensor_data->steering.steering_angle);
     
-    sensor_data->imu.timestamp = timestamp;
+//     sensor_data->imu.timestamp = timestamp;
     
-    /* 轮速计和转向角数据 */
-    sensor_data->wheel_odometry.distance += sensor_data->wheel_odometry.velocity * dt / 1000.0;
-    sensor_data->wheel_odometry.timestamp = timestamp;
+//     /* 轮速计和转向角数据 */
+//     sensor_data->wheel_odometry.distance += sensor_data->wheel_odometry.velocity * dt / 1000.0;
+//     sensor_data->wheel_odometry.timestamp = timestamp;
     
-    sensor_data->steering.steering_rate = 0.0;  /* 缓慢变化 */
-    sensor_data->steering.timestamp = timestamp;
+//     sensor_data->steering.steering_rate = 0.0;  /* 缓慢变化 */
+//     sensor_data->steering.timestamp = timestamp;
     
-    sensor_data->timestamp = timestamp;
-}
+//     sensor_data->timestamp = timestamp;
+// }
 typedef struct VehicleData{
     uint32_t wheel_counter_rr;
     uint32_t wheel_counter_rl;
@@ -249,18 +249,19 @@ FILE* create_csv_file(const char* file_path) {
     if (f==NULL) {
         return f;
     }
-    fprintf(f,"x,y,heading,steering_angle,gear,imu_acce_x,imu_acce_y,imu_acce_z,timestamp\r\n");
+    fprintf(f,"x,y,heading,steering_angle,yaw_rate,gear,imu_acce_x,imu_acce_y,imu_acce_z,timestamp\r\n");
     return f;
 }
 bool save_localization_data(FILE *f,const VehicleState_t *state,SensorReadings_t *sensor_data){
     if(f==NULL || state==NULL){
         return false;
     }
-    fprintf(f,"%.3f,%.3f,%.3f,%.3f,%s,%.3f,%.3f,%.3f,%lf\r\n",
+    fprintf(f,"%.3f,%.3f,%.3f,%.3f,%.5f,%s,%.3f,%.3f,%.3f,%lf\r\n",
             state->x,
             state->y,
             state->heading,
             state->steering_angle,
+            state->yaw_rate,
             gear2str(state->gear),
             sensor_data->imu.accel_x,
             sensor_data->imu.accel_y,
@@ -282,6 +283,65 @@ static double parse_json_number(const char *buf, const char *key) {
     return v;
 }
 LocalizationSystem_t localization_sys;
+void load_calibration_params_from_json(const char *path, CalibrationParams_t *calibration)
+{
+    FILE *cf = fopen(path, "r");
+    if (cf)
+    {
+        fseek(cf, 0, SEEK_END);
+        long sz = ftell(cf);
+        fseek(cf, 0, SEEK_SET);
+        char *buf = malloc((size_t)sz + 1);
+        if (buf)
+        {
+            if (fread(buf, 1, (size_t)sz, cf) == (size_t)sz)
+            {
+                buf[sz] = '\0';
+                double v;
+                v = parse_json_number(buf, "\"wheel_calibration_factor\"");
+                if (!isnan(v))
+                    calibration->wheel_calibration_factor = (float)v;
+                v = parse_json_number(buf, "\"steering_angle_offset_rad\"");
+                if (!isnan(v))
+                    calibration->steering_angle_offset = (float)v;
+                v = parse_json_number(buf, "\"steering_angle_gain\"");
+                if (!isnan(v))
+                    calibration->steering_angle_gain = (float)v;
+                v = parse_json_number(buf, "\"imu_accel_bias_x_mss\"");
+                if (!isnan(v))
+                    calibration->imu_accel_bias_x = (float)v;
+                v = parse_json_number(buf, "\"imu_accel_bias_y_mss\"");
+                if (!isnan(v))
+                    calibration->imu_accel_bias_y = (float)v;
+                v = parse_json_number(buf, "\"imu_gyro_bias_z_rads\"");
+                if (!isnan(v))
+                    calibration->imu_gyro_bias_z = (float)v;
+                v = parse_json_number(buf, "\"imu_accel_scale_x\"");
+                if (!isnan(v))
+                    calibration->imu_accel_scale_x = (float)v;
+                v = parse_json_number(buf, "\"imu_accel_scale_y\"");
+                if (!isnan(v))
+                    calibration->imu_accel_scale_y = (float)v;
+                v = parse_json_number(buf, "\"ackermann_factor\"");
+                if (!isnan(v))
+                    calibration->ackermann_factor = (float)v;
+            }
+            free(buf);
+        }
+        fclose(cf);
+        printf("\n📋 标定参数已加载（来自 calibration.json 或默认）\n");
+    }
+    else
+    {
+        printf("\n📋 未找到 calibration.json，使用默认硬编码标定参数\n");
+    }
+}
+void print_help(int argc,char **argv){
+    printf("Usage: %s -i [input_vehicle_data_csv] -o [vehicle_localization_csv] -c [json_config_file]\n",argv[0]);
+    printf("-i/--input: input vehicle data csv file path, using vehicle_data.csv as default if not set\n");
+    printf("-o/--output: output vehicle localization csv file path, using vehicle_localization.csv as default if not set\n");
+    printf("-c/--config: calibration json config file path, using calibration.json as default if not set\n");
+}
 int main(int argc, char **argv)
 {
 
@@ -309,6 +369,7 @@ int main(int argc, char **argv)
     CalibrationParams_t calibration = {0};
     /* 默认值（保留原示例的默认参数） */
     calibration.wheel_calibration_factor = 1.0f;
+    calibration.heading_bias = 0.0f;
     calibration.steering_angle_offset = 0.0f;
     calibration.steering_angle_gain = 1.0f;
     calibration.imu_accel_bias_x = 0.0f;
@@ -319,52 +380,11 @@ int main(int argc, char **argv)
     calibration.imu_lateral_accel_bias = 0.0f;
     calibration.imu_lateral_accel_scale = 1.0f;
 
-    FILE *cf = fopen("/Users/alex/workspace/code_review/vehicle_localization/calibration.json", "r");
-    if (cf) {
-        fseek(cf, 0, SEEK_END);
-        long sz = ftell(cf);
-        fseek(cf, 0, SEEK_SET);
-        char *buf = malloc((size_t)sz + 1);
-        if (buf) {
-            if (fread(buf, 1, (size_t)sz, cf) == (size_t)sz) {
-                buf[sz] = '\0';
-                double v;
-                v = parse_json_number(buf, "\"wheel_calibration_factor\"");
-                if (!isnan(v)) calibration.wheel_calibration_factor = (float)v;
-                v = parse_json_number(buf, "\"steering_angle_offset_rad\"");
-                if (!isnan(v)) calibration.steering_angle_offset = (float)v;
-                v = parse_json_number(buf, "\"steering_angle_gain\"");
-                if (!isnan(v)) calibration.steering_angle_gain = (float)v;
-                v = parse_json_number(buf, "\"imu_accel_bias_x_mss\"");
-                if (!isnan(v)) calibration.imu_accel_bias_x = (float)v;
-                v = parse_json_number(buf, "\"imu_accel_bias_y_mss\"");
-                if (!isnan(v)) calibration.imu_accel_bias_y = (float)v;
-                v = parse_json_number(buf, "\"imu_gyro_bias_z_rads\"");
-                if (!isnan(v)) calibration.imu_gyro_bias_z = (float)v;
-                v = parse_json_number(buf, "\"imu_accel_scale_x\"");
-                if (!isnan(v)) calibration.imu_accel_scale_x = (float)v;
-                v = parse_json_number(buf, "\"imu_accel_scale_y\"");
-                if (!isnan(v)) calibration.imu_accel_scale_y = (float)v;
-                v = parse_json_number(buf, "\"ackermann_factor\"");
-                if (!isnan(v)) calibration.ackermann_factor = (float)v;
-            }
-            free(buf);
-        }
-        fclose(cf);
-        printf("\n📋 标定参数已加载（来自 calibration.json 或默认）\n");
-    } else {
-        printf("\n📋 未找到 calibration.json，使用默认硬编码标定参数\n");
-    }
-
-    printf("   wheel_calibration_factor: %.8f\n", calibration.wheel_calibration_factor);
-    printf("   steering_angle_offset: %.8f rad\n", calibration.steering_angle_offset);
-    printf("   steering_angle_gain: %.8f\n\n", calibration.steering_angle_gain);
     
-    /* 应用标定参数，置信度设为1.0（使用该参数） */
-    int ret_calib = localization_system_set_calibration(&localization_sys, &calibration, 1.0f);
-    if (ret_calib != 0) {
-        printf("⚠️  标定参数设置失败\n");
-    }
+
+    // ...existing code...
+
+    
     
     /* === ISO 8855坐标系配置确认 === */
     printf("═══════════════════════════════════════════════════════\n");
@@ -418,6 +438,7 @@ int main(int argc, char **argv)
     VehicleDataArray vehicle_data_array={0};
     const char *csv_file = "vehicle_data.csv";
     const char *localization_csv_file = "vehicle_localization.csv";
+    const char *config_file = "calibration.json";
     if(argc >=3){
         for (int i=0;i<argc;i++){
             if(strcmp(argv[i],"--input")==0 && (i+1)<argc){
@@ -436,8 +457,43 @@ int main(int argc, char **argv)
                 localization_csv_file = argv[i+1];
                 i+=1;
             }
+            else if(strcmp(argv[i],"--config")==0 && (i+1)<argc){
+                config_file = argv[i+1];
+                i+=1;
+            }
+            else if(strcmp(argv[i],"-c")==0 && (i+1)<argc){
+                config_file = argv[i+1];
+                i+=1;
+            }
+            else if(strcmp(argv[i],"--help")==0 || strcmp(argv[i],"-h")==0){
+                print_help(argc,argv);
+                return 0;
+            }
 
         }
+    }
+    else{
+        print_help(argc,argv);
+        return 0;
+    }
+    load_calibration_params_from_json(config_file, &calibration);
+
+    printf("   wheel_calibration_factor: %.8f\n", calibration.wheel_calibration_factor);
+    printf("   steering_angle_offset: %.8f rad\n", calibration.steering_angle_offset);
+    printf("   steering_angle_gain: %.8f\n\n", calibration.steering_angle_gain);
+    printf("   heading_bias: %.8f rad\n", calibration.heading_bias);
+    printf("   imu_accel_bias_x: %.8f m/s²\n", calibration.imu_accel_bias_x);
+    printf("   imu_accel_bias_y: %.8f m/s²\n", calibration.imu_accel_bias_y);
+    printf("   imu_gyro_bias_z: %.8f rad/s\n", calibration.imu_gyro_bias_z);
+    printf("   imu_accel_scale_x: %.8f\n", calibration.imu_accel_scale_x);
+    printf("   imu_accel_scale_y: %.8f\n", calibration.imu_accel_scale_y);
+    printf("   ackermann_factor: %.8f\n", calibration.ackermann_factor);
+    printf("───────────────────────────────────────────────────────\n\n");
+    
+    /* 应用标定参数，置信度设为1.0（使用该参数） */
+    int ret_calib = localization_system_set_calibration(&localization_sys, &calibration);
+    if (ret_calib != 0) {
+        printf("⚠️  标定参数设置失败\n");
     }
     ret = load_csv_data(csv_file,&vehicle_data_array);
     if(ret==false){

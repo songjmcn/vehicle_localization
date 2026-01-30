@@ -189,7 +189,7 @@ int wheel_odometry_processor_update(WheelOdometryProcessor_t *processor,
     float pulse_delta_float = (float)(left_delta + right_delta) / 2.0f + processor->pulse_residual;
     int32_t pulse_delta = (int32_t)floorf(pulse_delta_float);
     //异常检测左右轮归零
-    if(left_delta > 5 || right_delta > 5){
+    if(left_delta > 20 || right_delta > 20){
         // 在 LEV 项目中，5个脉冲会导致 5.7m/s 的速度，这已经是非常高的速度了,说明脉冲跳变异常
         printf(
             "Warning: Large pulse delta detected: left_delta=%d, right_delta=%d, pulse_delta=%d\n",
@@ -244,12 +244,12 @@ int wheel_odometry_processor_update(WheelOdometryProcessor_t *processor,
      */
     double distance_delta = (double)pulse_delta / processor->config.pulses_per_wheel_rev
                            * wheel_circumference;
-    if(pulse_delta>0){
-        printf(
-            "pulse_delta:%d, time_delta:%d, distance_delta:%lf\n",
-            pulse_delta, time_delta_ms, distance_delta
-        );
-    }
+    // if(pulse_delta>0){
+    //     printf(
+    //         "pulse_delta:%d, time_delta:%d, distance_delta:%lf\n",
+    //         pulse_delta, time_delta_ms, distance_delta
+    //     );
+    // }
     /* 计算原始速度（用于方向判断和平滑处理） */
     double dt_sec = time_delta_ms / 1000.0;
     double raw_velocity = distance_delta / dt_sec;

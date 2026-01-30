@@ -286,7 +286,7 @@ int localization_system_process(LocalizationSystem_t *sys,
     
     /* ===== 步骤0：根据数据类型处理轮速数据 ===== */
     float velocity = sensor_data->wheel_odometry.velocity;
-    float odometry_distance = 0.0f;  /* 新增：保存轮速计计算的距离 */
+    //float odometry_distance = 0.0f;  /* 新增：保存轮速计计算的距离 */
     
     /* 如果提供了脉冲数据，自动调用脉冲处理器 */
     if (sensor_data->has_wheel_pulse) {
@@ -303,7 +303,7 @@ int localization_system_process(LocalizationSystem_t *sys,
                                            &processed_odometry) == 0) {
             /* 使用处理后的轮速数据 */
             velocity = processed_odometry.velocity;
-            odometry_distance = processed_odometry.distance;  /* 保存距离 */
+            //odometry_distance = processed_odometry.distance;  /* 保存距离 */
 // #ifdef DEBUG
 //             printf("Odometry: velocity=%f, distance=%f, timestamp=%llu\n",
 //                    velocity, odometry_distance, sensor_data->timestamp);
@@ -319,10 +319,14 @@ int localization_system_process(LocalizationSystem_t *sys,
         if (wheel_odometry_processor_set_velocity(&sys->wheel_processor,
                                                  velocity,
                                                  (uint32_t)sensor_data->timestamp,
-                                                 &processed_odometry) != 0) {
+                                                 &processed_odometry) == 0) {
+            velocity = processed_odometry.velocity;  /* 使用校准后的速度 */
+            //odometry_distance = processed_odometry.distance;  /* 保存距离 */
+        }
             /* 处理失败，但继续使用原始速度值 */
-        } else {
-            odometry_distance = processed_odometry.distance;  /* 保存距离 */
+        else {
+            // 处理失败，使用 EFK 推测的速度值继续计算
+             velocity = kalman_filter_get_predicted_velocity(&sys->kalman_filter);
         }
     }
 
@@ -393,10 +397,11 @@ int localization_system_process(LocalizationSystem_t *sys,
      * motion_model_predict会使用这个已有符号的velocity进行位置更新
      */
     double signed_velocity = velocity;  /* 直接使用processor返回的已有符号的速度，无需重复处理 */
-
+    double raw_rate = 0.;
     /* 预测步骤 */
     kalman_filter_predict_with_state(&sys->kalman_filter,
                                       &current_state_with_direction,
+                                      &raw_rate,  
                                       signed_velocity,
                                       filtered_steering,
                                       sensor_data->timestamp);
@@ -419,6 +424,7 @@ int localization_system_process(LocalizationSystem_t *sys,
     kalman_filter_get_state(&sys->kalman_filter, estimated_state);
     estimated_state->gear = sensor_data->gear;
     estimated_state->direction = vehicle_direction;  /* 设置计算好的方向 */
+    estimated_state->yaw_rate = raw_rate;  /* 原始转向率 */
 
     /* 获取诊断信息 */
     sys->diagnostics = kalman_filter_get_diagnostics(&sys->kalman_filter);
@@ -473,17 +479,11 @@ DiagnosticsInfo_t localization_system_get_diagnostics(const LocalizationSystem_t
  * @return 0 应用成功，-1 拒绝或失败
  */
 int localization_system_set_calibration(LocalizationSystem_t *sys,
-                                        const CalibrationParams_t *calibration,
-                                        float confidence) {
+                                        const CalibrationParams_t *calibration) {
     if (!sys || !calibration) {
         return -1;
     }
     
-    /* 置信度阈值检查 */
-    const float CONFIDENCE_THRESHOLD = 0.5f;  /* 50% 最小置信度 */
-    if (confidence < CONFIDENCE_THRESHOLD) {
-        return -1;  /* 拒绝应用参数 */
-    }
     
     sys->calibration = *calibration;
     sys->kalman_filter.calibration = *calibration;

@@ -11,21 +11,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* ========== 常数定义 ========== */
+#include "macros.h"
 
-#define PI 3.141592653589793
-#define DEG_TO_RAD(x) ((x) * PI / 180.0)
-#define RAD_TO_DEG(x) ((x) * 180.0 / PI)
-#define WHEELBASE 2.7  /* 轴距 (m) */
-#define MAX_HISTORY_SIZE 100
-
-/* 速度阈值 */
-#define V_STATIC_THRESHOLD 0.05 /* 静止速度阈值 (m/s), 优化为float精度推荐值 */
-#define V_LOW_SPEED_THRESHOLD 1.5  /* 低速阈值 (m/s) */
-#define V_PARKING_MAX 2.0  /* 自动泊车最大速度 (m/s) */
-
-/* 传感器阈值 */
-#define WHEEL_SLIP_ACCEL_THRESHOLD 0.3  /* 轮滑动加速度阈值 (m/s²) */
 
 /* ========== 融合算法配置 ========== */
 
@@ -90,6 +77,7 @@ typedef struct {
     float y;              /**< 后轮轴中心Y位置(m) */
     float heading;        /**< 偏航角(rad) */
     float v;              /**< 后轮纵向速度(m/s) */
+    float yaw_rate;  /**< 航向角变化量(rad)，预留字段 */
     float steering_angle; /**< 前轮转向角(rad)，后退时反向 */
     uint64_t timestamp;  /**< 时间戳 (ms) */
     VehicleGear_t gear;  /**< 车辆档位 */
@@ -205,6 +193,7 @@ typedef struct {
     float wheel_calibration_factor;  /**< 轮速计校准因子 */
     float steering_angle_offset;     /**< 转向角零偏 (rad) */
     float steering_angle_gain;       /**< 转向角增益 */
+    float heading_bias;             /**< 航向角偏置 (rad) */
     float ackermann_factor;          /**< Ackermann转向几何因子 */
     float imu_accel_bias_x;          /**< IMU x轴加速度零偏 */
     float imu_accel_bias_y;          /**< IMU y轴加速度零偏 */

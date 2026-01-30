@@ -471,7 +471,6 @@ int steering_query_mapping(SteeringModel_t *config,
         idx = config->steering_mapping.num_points - 2;
     }
     if (idx < 0) {
-        //printf("steering_query_mapping: steering_wheel_angle out of range\n");
         idx = 0;
     }
     
@@ -674,6 +673,7 @@ int steering_model_apply_rtk_calibration(SteeringModel_t *config,
     config->steering_config.ackermann_factor = calib_params->ackermann_factor;
     
     config->steering_config.steering_angle_gain = calib_params->steering_angle_gain;
+    config->steering_config.heading_bias = calib_params->heading_bias;
     
     return 0;
 }

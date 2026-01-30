@@ -78,7 +78,7 @@ def generate_rtk_ground_truth(
 if __name__ == "__main__":
     vehicle_localization_file = 'vehicle_localization.csv'
     rtk_trajectory_file = 'rtk_trajectory.csv'
-    data_dir = '/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__forward_0_5kph_002'
+    data_dir = '/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__forward_0_20kph_001'
     vehicle_localization_file = os.path.join(data_dir, vehicle_localization_file)
     rtk_trajectory_file = os.path.join(data_dir, rtk_trajectory_file)
     vehicle_localization_data = pd.read_csv(vehicle_localization_file, sep=',')

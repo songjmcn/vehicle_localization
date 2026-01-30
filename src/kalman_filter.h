@@ -19,7 +19,7 @@ typedef struct {
     DiagnosticsInfo_t diagnostics;
     SteeringJitterFilter_t steering_filter;  /**< 转向角抖动过滤器 */
     FusionConfig_t fusion_config;            /**< 融合算法配置 */
-    SteeringModel_t *steering_config;  /**< 转向模型配置指针 */
+    SteeringModel_t *steering_model;  /**< 转向模型配置指针 */
 } KalmanFilter_t;
 
 /**
@@ -61,6 +61,7 @@ int kalman_filter_init_with_mode(KalmanFilter_t *kf,
  */
 void kalman_filter_predict_with_state(KalmanFilter_t *kf,
                                        const VehicleState_t *state_with_direction,
+                                       double *yaw_rate,
                                        double velocity,
                                        double steering_angle,
                                        uint64_t timestamp);
@@ -73,6 +74,7 @@ void kalman_filter_predict_with_state(KalmanFilter_t *kf,
  * @param timestamp 时间戳 (ms)
  */
 void kalman_filter_predict(KalmanFilter_t *kf,
+                          double *yaw_rate,  
                           double velocity,
                           double steering_angle,
                           uint64_t timestamp);
@@ -146,7 +148,7 @@ int steering_jitter_filter_init(SteeringJitterFilter_t *filter);
  * @param steering_angle 原始转向角 (rad)
  * @return 0成功，-1失败
  */
-int steering_jitter_filter_update(SteeringJitterFilter_t *filter,const SteeringConfig_t *steering_config,
+int steering_jitter_filter_update(SteeringJitterFilter_t *filter,const SteeringConfig_t *steering_model,
                                    const double steering_angle);
 
 /**
@@ -201,6 +203,7 @@ void steering_jitter_filter_reset(SteeringJitterFilter_t *filter);
  * @param timestamp 时间戳 (ms)
  */
 void kalman_filter_predict_float(KalmanFilter_t *kf,
+                                 float *yaw_rate,   
                                  float velocity,
                                  float steering_angle,
                                  uint64_t timestamp);
@@ -233,9 +236,9 @@ void kalman_filter_set_gear(KalmanFilter_t *kf, VehicleGear_t gear);
 /**
  * @brief 设置卡尔曼滤波器的转向模型配置
  * @param kf 滤波器指针
- * @param steering_config 转向模型配置指针
+ * @param steering_model 转向模型配置指针
  * @return 0成功，-1失败
  */
-int kalman_filter_set_steering_config(KalmanFilter_t *kf, SteeringModel_t *steering_config);
+int kalman_filter_set_steering_config(KalmanFilter_t *kf, SteeringModel_t *steering_model);
 
 #endif /* KALMAN_FILTER_H */
