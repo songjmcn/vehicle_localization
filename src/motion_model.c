@@ -177,8 +177,8 @@ VehicleState_t motion_model_predict(SteeringModel_t *steering_model,
      *   2. 物理一致性：位移应使用初始方向而非最终方向
      *   3. 倒车时特别重要：错误的heading导致Y坐标错误累积
      */
-    double cos_term = cos(new_heading-steering_model->steering_config.heading_bias);
-    double sin_term = sin(new_heading-steering_model->steering_config.heading_bias);
+    double cos_term = cos(new_heading+steering_model->steering_config.heading_bias);
+    double sin_term = sin(new_heading+steering_model->steering_config.heading_bias);
     
     /* 使用有符号速度进行位置更新
      * 当v_signed为负(后退)时：
@@ -321,15 +321,15 @@ VehicleState_t motion_model_predict_float(SteeringModel_t *steering_model,
         VehicleState_t empty = {0};
         return empty;
     }
-    double yaw_rate_double = 0.0;
+    //double yaw_rate_double = 0.0;
     /* 转换float为double并调用原有函数 */
     VehicleState_t ret =  motion_model_predict(steering_model,
                                state,
-                               &yaw_rate_double,
+                               yaw_rate,
                                (double)velocity,
                                (double)steering_angle,
                                (double)dt);
-    *yaw_rate = (float)yaw_rate_double;
+    //*yaw_rate = (float)yaw_rate_double;
     return ret;
 }
 

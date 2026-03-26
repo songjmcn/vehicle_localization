@@ -363,10 +363,14 @@ class TrajectoryComparison:
         
         # 🔧 设置坐标轴范围：基于反演后的坐标计算
         # 横轴（Y坐标反演后）范围
-        y_rtk_inv = -self.rtk_df['y'].values
-        y_loc_inv = -self.loc_df['y'].values
+        y_rtk_inv = self.rtk_df['y'].values
+        y_loc_inv = self.loc_df['y'].values
         y_min = min(y_rtk_inv.min(), y_loc_inv.min())
         y_max = max(y_rtk_inv.max(), y_loc_inv.max())
+        if y_min>-5:
+            y_min -= 5
+        if y_max<5:
+            y_max = 5       
         y_range = y_max - y_min
         print(f"y坐标范围(反演后): {y_min:.2f} ~ {y_max:.2f} (范围: {y_range:.2f} m)")
         # 动态设置范围，使用统一的缓冲方案：10% 缓冲，最小 1m
@@ -917,7 +921,7 @@ def main(rtk_trajectory_file:str,vehicle_localization_file:str,save_dir:str):
 
 if __name__ == '__main__':
     main(
-        rtk_trajectory_file="/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__forward_0_20kph_001/rtk_trajectory.csv",
-        vehicle_localization_file="/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__forward_0_20kph_001/vehicle_localization.csv",
-        save_dir="/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__forward_0_20kph_001"
+        rtk_trajectory_file="/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__backward_0_5kph_001/rtk_trajectory.csv",
+        vehicle_localization_file="/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__backward_0_5kph_001/vehicle_localization.csv",
+        save_dir="/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stragight__backward_0_5kph_001/trajectory_comparison"
     )

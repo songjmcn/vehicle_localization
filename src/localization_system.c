@@ -422,9 +422,11 @@ int localization_system_process(LocalizationSystem_t *sys,
     
     /* 获取估计状态 */
     kalman_filter_get_state(&sys->kalman_filter, estimated_state);
+    estimated_state->heading = estimated_state->heading+sys->calibration.heading_bias; /* 应用航向偏差校准 */
     estimated_state->gear = sensor_data->gear;
     estimated_state->direction = vehicle_direction;  /* 设置计算好的方向 */
     estimated_state->yaw_rate = raw_rate;  /* 原始转向率 */
+    estimated_state->velocity = signed_velocity;  /* 使用带符号的速度 */
 
     /* 获取诊断信息 */
     sys->diagnostics = kalman_filter_get_diagnostics(&sys->kalman_filter);

@@ -249,14 +249,15 @@ FILE* create_csv_file(const char* file_path) {
     if (f==NULL) {
         return f;
     }
-    fprintf(f,"x,y,heading,steering_angle,yaw_rate,gear,imu_acce_x,imu_acce_y,imu_acce_z,timestamp\r\n");
+    fprintf(f,"velocity,x,y,heading,steering_angle,yaw_rate,gear,imu_acce_x,imu_acce_y,imu_acce_z,timestamp\r\n");
     return f;
 }
 bool save_localization_data(FILE *f,const VehicleState_t *state,SensorReadings_t *sensor_data){
     if(f==NULL || state==NULL){
         return false;
     }
-    fprintf(f,"%.3f,%.3f,%.3f,%.3f,%.5f,%s,%.3f,%.3f,%.3f,%lf\r\n",
+    fprintf(f,"%.3f,%.3f,%.3f,%.3f,%.3f,%.5f,%s,%.3f,%.3f,%.3f,%lf\r\n",
+            state->velocity,
             state->x,
             state->y,
             state->heading,
@@ -325,6 +326,9 @@ void load_calibration_params_from_json(const char *path, CalibrationParams_t *ca
                 v = parse_json_number(buf, "\"ackermann_factor\"");
                 if (!isnan(v))
                     calibration->ackermann_factor = (float)v;
+                    v = parse_json_number(buf, "\"heading_bias_rad\"");
+                if (!isnan(v))
+                    calibration->heading_bias = (float)v;
             }
             free(buf);
         }
@@ -506,12 +510,12 @@ int main(int argc, char **argv)
         memset(&sensor_data, 0, sizeof(sensor_data));
         
         /* 填充IMU数据 */
-        // sensor_data.imu.accel_x = vehicle_data_array.data_array[step].imu_accel_x;
-        // sensor_data.imu.accel_y = vehicle_data_array.data_array[step].imu_accel_y;
-        // sensor_data.imu.accel_z = vehicle_data_array.data_array[step].imu_accel_z;
-        sensor_data.imu.accel_x = 0;
-        sensor_data.imu.accel_y = 0;
-        sensor_data.imu.accel_z = 0;
+        sensor_data.imu.accel_x = vehicle_data_array.data_array[step].imu_accel_x;
+        sensor_data.imu.accel_y = vehicle_data_array.data_array[step].imu_accel_y;
+        sensor_data.imu.accel_z = vehicle_data_array.data_array[step].imu_accel_z;
+        // sensor_data.imu.accel_x = 0;
+        // sensor_data.imu.accel_y = 0;
+        // sensor_data.imu.accel_z = 0;
         sensor_data.imu.timestamp = (uint64_t)(vehicle_data_array.data_array[step].timestamp_s * 1000);
         
         /* 填充转向数据 */

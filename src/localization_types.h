@@ -73,14 +73,15 @@ typedef enum {
  * @brief 车辆状态结构体 (外部 API 使用 float 版本)
  */
 typedef struct {
-    float x;              /**< 后轮轴中心X位置(m) */
-    float y;              /**< 后轮轴中心Y位置(m) */
-    float heading;        /**< 偏航角(rad) */
-    float v;              /**< 后轮纵向速度(m/s) */
-    float yaw_rate;  /**< 航向角变化量(rad)，预留字段 */
-    float steering_angle; /**< 前轮转向角(rad)，后退时反向 */
-    uint64_t timestamp;  /**< 时间戳 (ms) */
-    VehicleGear_t gear;  /**< 车辆档位 */
+    float x;                       /**< 后轮轴中心X位置(m) */
+    float y;                       /**< 后轮轴中心Y位置(m) */
+    float heading;                 /**< 偏航角(rad) */
+    float v;                       /**< 后轮纵向速度(m/s) */
+    float yaw_rate;                /**< 航向角变化量(rad)，预留字段 */
+    float steering_angle;          /**< 前轮转向角(rad)，后退时反向 */
+    float velocity;                /**< 轮速计计算的车辆速度(m/s)，前进为正，后退为负 */
+    uint64_t timestamp;            /**< 时间戳 (ms) */
+    VehicleGear_t gear;            /**< 车辆档位 */
     VehicleDirection_t direction;  /**< 推导的运动方向 */
 } VehicleState_t;
 

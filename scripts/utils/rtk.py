@@ -208,12 +208,12 @@ class RTKData:
         psi0 = RTKData.huace_heading_def_math_rad(heading0_deg)
         cos0 = np.cos(psi0)
         sin0 = np.sin(psi0)
-        x = dE * cos0 +dN*sin0
+        # ENU -> body: ensure consistency with antenna_to_vehicle_ref (body -> ENU)
+        # forward unit = [sin(psi0), cos(psi0)], right unit = [cos(psi0), -sin(psi0)]
+        x = dE * cos0 + dN * sin0
         y = -dE * sin0 + dN * cos0
         z = dU if body_z_up else -dU
-        heading_math = RTKData.huace_heading_def_math_rad(heading_deg)
-        heading_vehicle = RTKData.wrap_to_pi(heading_math - psi0)
-        return float(x), float(y), float(z), float(heading_vehicle)
+        return float(x), float(y), float(z)
     @staticmethod
     def wrap_to_pi(rad:float):
         return (rad+np.pi) % (2*np.pi) - np.pi
@@ -236,8 +236,18 @@ class RTKData:
         1. compute antenna ENU relative to provided origin (calls `to_enu`)
         2. if `antenna_offset` provided (dx,dy,dz in body frame), compute vehicle reference ENU
            by rotating offset into ENU and subtracting from antenna ENU
-        3. project ENU -> body using heading
+        3. project ENU -> body using origin_heading as reference
         4. convert heading from RTK (geographic, 0-360° clockwise from north) to ISO 8855 (-π to π, counterclockwise from forward)
+        5. if velocity < 0 (reverse), negate x-coordinate to match localization semantics
+
+        Args:
+            origin_lat, origin_lon, origin_alt: origin in geodetic coordinates
+            origin_heading: vehicle heading at origin (degrees) - used as reference for all transformations
+            antenna_offset: (dx, dy, dz) offset in vehicle body frame (meters), or None
+            body_z_up: if True, z-axis points up; if False, points down
+            velocity: vehicle velocity (m/s). Positive = forward, Negative = reverse.
+                     If None, assumes forward motion.
+            is_reverse: if True, indicates the vehicle is moving in reverse.
 
         Returns:
             (x_body, y_body, z_body, heading_8855) in meters and radians; sets instance attributes
@@ -247,27 +257,39 @@ class RTKData:
             - RTK heading: 0°=north, 90°=east, clockwise positive, range [0, 360)
             - ISO 8855 heading: 0=forward, π/2=left, counterclockwise positive, range [-π, π]
             - Formula: heading_8855_rad = -heading_rtk_rad (normalized to [-π, π])
+            
+        Reverse Motion Handling:
+            - When vehicle is in reverse (velocity < 0), the x-coordinate in body frame is negated
+              to match the localization system's use of signed velocity for position integration.
+              This ensures that relative position changes are consistent between RTK and localization.
         """
         # antenna ENU relative to origin
         E_ant, N_ant, U_ant = self.to_enu(origin_lat, origin_lon, origin_alt)
         if antenna_offset is not None:
             dx, dy, dz = antenna_offset
-            E_ref, N_ref, U_ref = RTKData.antenna_to_vehicle_ref(E_ant, N_ant, U_ant, self.heading, dx, dy, dz)
+            # 使用当前 RTK 航向将天线偏移从车体系旋转到 ENU
+            E_ref, N_ref, U_ref = RTKData.antenna_to_vehicle_ref(
+                E_ant, N_ant, U_ant, self.heading, dx, dy, dz
+            )
         else:
-            E_ref, N_ref, U_ref = 0.0, 0.0, 0.0   
-        x_8855, y_8855, z_8855,heading_8855 = RTKData.enu_to_body(E_ant, N_ant, U_ant, E_ref, N_ref, U_ref, origin_heading,self.heading, body_z_up)
+            # 无天线偏移时，车体参考点与天线重合
+            E_ref, N_ref, U_ref = E_ant, N_ant, U_ant   
         
-        # Convert heading from RTK (geographic) to ISO 8855 (vehicle body frame)
-        # RTK: 0°=north, 90°=east, clockwise positive
-        # ISO 8855: 0=forward, π/2=left, counterclockwise positive
-        # heading_rtk_rad = math.radians(heading_deg)
-        # heading_8855 = -heading_rtk_rad
+        # 将车体参考点 ENU 坐标投影到以 origin_heading 为参考的车体系
+        x_8855, y_8855, z_8855 = RTKData.enu_to_body(
+            E_ref, N_ref, U_ref,
+            0.0, 0.0, 0.0,
+            origin_heading,
+            origin_heading,
+            body_z_up
+        )
         
-        # Normalize heading to [-π, π]
-        # while heading_8855 > math.pi:
-        #     heading_8855 -= 2 * math.pi
-        # while heading_8855 < -math.pi:
-        #     heading_8855 += 2 * math.pi
+        # Calculate relative heading difference between current and origin
+        # Note: heading_diff is in degrees, need to convert to radians and wrap to [-π, π]
+        # For relative heading, we DON'T use huace_heading_def_math_rad() because that's for absolute heading conversion
+        heading_diff_deg = origin_heading - self.heading
+        heading_8855 = RTKData.wrap_to_pi(np.deg2rad(heading_diff_deg))
+        
 
         self.body_x = float(x_8855)
         self.body_y = float(y_8855)
@@ -336,35 +358,197 @@ class RTKUtils:
             # store chosen origin for callers
             self.origin = (origin_lat, origin_lon, origin_alt,origin_heading)
             # convert all RTK points to body coords using selected origin
-            self.body_coords = self.convert_all_to_body(self.rtk_list, origin_lat=origin_lat, origin_lon=origin_lon, origin_alt=origin_alt, origin_heading=origin_heading, antenna_offset=None, body_z_up=True)
-            # Print concise read statistics and chosen origin for quick feedback
-            try:
-                print('RTK read summary:')
-                print(f"  assembled_count={self.read_stats.get('assembled_count')}, total_attempts={self.read_stats.get('total_attempts')}, dropped={self.read_stats.get('dropped_count')}")
-                print(f"  missing: gps_time={self.read_stats.get('missing_gps_time')}, system_state={self.read_stats.get('missing_system_state')}, satellite_status={self.read_stats.get('missing_satellite_status')}, gps_age={self.read_stats.get('missing_gps_age')}, altitude={self.read_stats.get('missing_altitude')}")
-                print(f"  timestamps: min={self.read_stats.get('timestamp_min')}, max={self.read_stats.get('timestamp_max')}")
-                print(f"  chosen_origin: lat={origin_lat}, lon={origin_lon}, alt={origin_alt}")
-                bc_count = len(self.body_coords) if getattr(self, 'body_coords', None) is not None else 0
-                print(f"  body_coords_count={bc_count}")
-            except Exception:
-                pass
-    def convert_all_to_body(self, rtk_list, origin_lat: float, origin_lon: float, origin_alt: float=0.0, origin_heading:float=0.0, antenna_offset: tuple=None, body_z_up: bool=True):
+            # self.body_coords = self.convert_all_to_body(self.rtk_list, origin_lat=origin_lat, origin_lon=origin_lon, origin_alt=origin_alt, origin_heading=origin_heading, antenna_offset=None, body_z_up=True)
+            # # Print concise read statistics and chosen origin for quick feedback
+            # try:
+            #     print('RTK read summary:')
+            #     print(f"  assembled_count={self.read_stats.get('assembled_count')}, total_attempts={self.read_stats.get('total_attempts')}, dropped={self.read_stats.get('dropped_count')}")
+            #     print(f"  missing: gps_time={self.read_stats.get('missing_gps_time')}, system_state={self.read_stats.get('missing_system_state')}, satellite_status={self.read_stats.get('missing_satellite_status')}, gps_age={self.read_stats.get('missing_gps_age')}, altitude={self.read_stats.get('missing_altitude')}")
+            #     print(f"  timestamps: min={self.read_stats.get('timestamp_min')}, max={self.read_stats.get('timestamp_max')}")
+            #     print(f"  chosen_origin: lat={origin_lat}, lon={origin_lon}, alt={origin_alt}")
+            #     bc_count = len(self.body_coords) if getattr(self, 'body_coords', None) is not None else 0
+            #     print(f"  body_coords_count={bc_count}")
+            # except Exception:
+            #     pass
+    def convert_all_to_body(self, rtk_list, origin_lat: float, origin_lon: float, origin_alt: float=0.0, origin_heading:float=0.0, antenna_offset: tuple=None, body_z_up: bool=True, velocity_list: list=None):
         """Convert a list of RTKData to vehicle body coordinates (ISO8855-like).
 
-        Returns list of (x,y,z,heading) tuples and sets `body_x`,`body_y`,`body_z`,`body_heading` on each RTKData.
+        Args:
+            rtk_list: list of RTKData objects
+            origin_lat, origin_lon, origin_alt: reference origin in geodetic coordinates
+            origin_heading: heading at origin (degrees) - used as reference for all transformations
+            antenna_offset: antenna offset tuple (dx, dy, dz) in meters
+            body_z_up: z-axis direction flag
+            velocity_list: optional list of velocities (m/s) corresponding to rtk_list.
+                          Positive = forward, Negative = reverse.
+                          If None or index out of range, forward motion is assumed.
+                          Required for correct handling of reverse motion.
+
+        Returns:
+            list of RTKData objects with body coordinates set.
         """
         out = []
-        for r in rtk_list:
+        for idx, r in enumerate(rtk_list):
+            # Extract velocity for this RTK point if available
+            velocity = None
+            if velocity_list is not None and idx < len(velocity_list):
+                velocity = velocity_list[idx]
+            
             # heading may be None, but RTKData.heading should exist; if missing skip conversion
             #heading_deg = r.heading if hasattr(r, 'heading') else 0.0
             #try:
-            x, y, z, heading_8855 = r.to_body(origin_lat, origin_lon, origin_alt, origin_heading, antenna_offset, body_z_up)
+            x, y, z, heading_8855 = r.to_body(origin_lat, origin_lon, origin_alt, origin_heading, antenna_offset, body_z_up, velocity=velocity)
             out.append(r)
             #except Exception:
                 # x, y, z, heading_8855 = None, None, None, None
             #    print("Error converting RTKData to body coordinates for:", r)
             #    continue
         return out
+
+    def convert_to_body_with_localization(self, loc_timestamps, loc_velocities, 
+                                           antenna_offset=None, body_z_up=True, max_time_diff=0.1,is_reverse=False,):
+        """Convert RTK points to body coordinates using aligned velocity data.
+        
+        This method takes pre-loaded localization timestamps and velocities, avoiding
+        the need for RTKUtils to handle CSV reading or pandas DataFrames.
+        
+        Args:
+            loc_timestamps: array-like of localization timestamps (seconds), e.g., numpy array or list
+            loc_velocities: array-like of localization velocities (m/s), same length as loc_timestamps
+                           Positive = forward, Negative = reverse
+            antenna_offset: antenna offset tuple (dx, dy, dz) in meters, or None
+            body_z_up: z-axis direction flag (True = up, False = down)
+            max_time_diff: maximum time difference (seconds) for matching RTK to localization (default: 0.1)
+        
+        Returns:
+            list of dicts with columns: timestamp, aligned_velocity, is_reverse, body_x, body_y, body_z, body_heading, rtk_heading_deg
+        """
+        # Convert to numpy arrays if needed
+        loc_timestamps = np.asarray(loc_timestamps, dtype=np.float64)
+        loc_velocities = np.asarray(loc_velocities, dtype=np.float64)
+        
+        if len(loc_timestamps) != len(loc_velocities):
+            raise ValueError(f"loc_timestamps and loc_velocities must have same length, got {len(loc_timestamps)} and {len(loc_velocities)}")
+        
+        if len(loc_timestamps) == 0:
+            raise ValueError("loc_timestamps and loc_velocities cannot be empty")
+        
+        # Helper function: find nearest velocity for each RTK timestamp using bisect
+        def find_nearest_velocity(rtk_timestamp, max_time_diff=0.1):
+            """Find velocity closest in time to given RTK timestamp."""
+            idx = bisect_left(loc_timestamps, rtk_timestamp)
+            candidates = []
+            
+            # Check point at and before the target timestamp
+            if idx > 0:
+                candidates.append((idx - 1, abs(loc_timestamps[idx - 1] - rtk_timestamp)))
+            if idx < len(loc_timestamps):
+                candidates.append((idx, abs(loc_timestamps[idx] - rtk_timestamp)))
+            
+            # Find the closest match within max_time_diff
+            best_idx = None
+            best_diff = max_time_diff
+            for cand_idx, time_diff in candidates:
+                if time_diff < best_diff:
+                    best_diff = time_diff
+                    best_idx = cand_idx
+            
+            return loc_velocities[best_idx] if best_idx is not None else None
+        
+        # Convert each RTK point with aligned velocity
+        origin_lat, origin_lon, origin_alt, origin_heading = self.origin
+        results = {}
+        results['timestamp'] = []
+        results['aligned_velocity'] = []
+        results['is_reverse'] = []
+        results['x'] = []
+        results['y'] = []
+        results['z'] = []
+        results['heading_rad'] = []
+        results['rtk_heading'] = []
+        unmatched_count = 0
+        self.body_coords = []
+        for rtk_point in self.rtk_list:
+            # Find aligned velocity
+            velocity = find_nearest_velocity(rtk_point.timestamp, max_time_diff=max_time_diff)
+            if velocity is None:
+                print('  ⚠ 未找到匹配的速度数据，跳过 RTK 点，时间戳:', rtk_point.timestamp)
+                unmatched_count += 1
+            
+            # Convert to body coordinates
+            x, y, z, heading = rtk_point.to_body(
+                origin_lat, origin_lon, origin_alt, origin_heading,
+                antenna_offset=antenna_offset,
+                body_z_up=body_z_up
+            )
+            # if is_reverse:
+            #     x = -x
+            #     y= -y
+            # results.append({
+            #     'timestamp': float(rtk_point.timestamp),
+            #     'aligned_velocity': float(velocity) if velocity is not None else None,
+            #     'is_reverse': bool(velocity < 0) if velocity is not None else False,
+            #     'x': float(x),
+            #     'y': float(y),
+            #     'z': float(z),
+            #     'heading': float(heading),
+            #     'rtk_heading': float(np.rad2deg(rtk_point.heading))
+            # })
+            t_is_reverse = False
+            if is_reverse:
+                t_is_reverse = True
+            elif velocity is not None and velocity < 0:
+                t_is_reverse = True
+            results['timestamp'].append(float(rtk_point.timestamp))
+            results['aligned_velocity'].append(float(velocity) if velocity is not None else None)
+            results['is_reverse'].append(t_is_reverse)
+            results['x'].append(float(x))
+            results['y'].append(float(y))
+            results['z'].append(float(z))
+            results['heading_rad'].append(float(heading))
+            results['rtk_heading'].append(float(np.rad2deg(rtk_point.heading)))
+            self.body_coords.append(rtk_point)
+        
+        # 使用对齐后的速度在增量层面处理倒车：
+        #  1) 先计算几何轨迹的增量 Δx, Δy
+        #  2) 对于 velocity<0 的点，反转该步增量
+        #  3) 从首点开始用修正后的增量重新积分，得到与 localization 语义一致的轨迹
+        # if len(results['x']) >= 2:
+        #     xs = np.asarray(results['x'], dtype=np.float64)
+        #     ys = np.asarray(results['y'], dtype=np.float64)
+        #     vels = np.asarray(
+        #         [np.nan if v is None else float(v) for v in results['aligned_velocity']],
+        #         dtype=np.float64
+        #     )
+
+        #     x_adj = np.empty_like(xs)
+        #     y_adj = np.empty_like(ys)
+        #     x_adj[0] = xs[0]
+        #     y_adj[0] = ys[0]
+
+        #     for i in range(1, len(xs)):
+        #         dx = xs[i] - xs[i - 1]
+        #         dy = ys[i] - ys[i - 1]
+        #         v = vels[i]
+        #         if not np.isnan(v) and (v < 0.0 or is_reverse):
+        #             dx = -dx
+        #             dy = -dy
+        #         x_adj[i] = x_adj[i - 1] + dx
+        #         y_adj[i] = y_adj[i - 1] + dy
+
+        #     # 保留原始几何轨迹，x/y 列更新为按速度修正后的轨迹
+        #     results['x_raw'] = [float(v) for v in xs]
+        #     results['y_raw'] = [float(v) for v in ys]
+        #     results['x'] = [float(v) for v in x_adj]
+        #     results['y'] = [float(v) for v in y_adj]
+        
+        # Print statistics
+        matched = len(results['timestamp']) - unmatched_count
+        print(f"  ✓ 成功匹配 {matched}/{len(self.rtk_list)} 个 RTK 点和 localization 速度数据")
+        if unmatched_count > 0:
+            print(f"  ⚠ 未匹配 {unmatched_count} 个点（时间差超过 {max_time_diff}s）")
+        
+        return results
 
     def find_static_start(self, rtk_list, origin_lat: float, origin_lon: float, origin_alt: float=0.0, antenna_offset: tuple=None, window_seconds: float=2.0, movement_threshold: float=0.1):
         """Find earliest index where vehicle is approximately stationary in body frame.
@@ -666,17 +850,17 @@ class RTKUtils:
         best_idx = np.nanargmax(scores)
         best_offset = offsets[best_idx]
         return best_offset, offsets, scores        
-    def find_best_time_offset(self,localization_csv:str=None,is_show_plot:bool=False):
-        if localization_csv is None:
-            print("No localization CSV file provided for time offset search.")
+    def find_best_time_offset(self,loc_heading,loc_timestamp,is_show_plot:bool=False):
+        if loc_heading is None or loc_timestamp is None:
+            print("No localization data provided for time offset search.")
             return None
         if self.body_coords is None:
             print("No body coordinates available for RTK data.")
             return None
         # read localization data
-        loc_data = pd.read_csv(localization_csv,sep=',',skipinitialspace=True)
-        loc_time = loc_data['timestamp'].to_numpy()
-        loc_yaw = loc_data['heading'].to_numpy()
+        
+        loc_time = np.asarray(loc_timestamp)
+        loc_yaw = np.asarray(loc_heading)
         rtk_time = []
         for rtk in self.body_coords:
             rtk_time.append(rtk.timestamp)
