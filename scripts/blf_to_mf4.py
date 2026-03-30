@@ -187,23 +187,26 @@ def blf_to_mf4(blf_file:str=None, db_file:dict=None,mf4_file:str=None,no_attribu
     return 0
 
 if __name__ == "__main__":
-    blf_file = "data/001.blf"
+    
     dbc_files = {0:"dbc/SAC/target_CHCANFD.dbc",
-                  1:"dbc/SAC/target_SFCANFD.dbc"}
-    save_path = "data"
-    mf4_file_name = os.path.basename(blf_file).replace(".blf",".mf4")
-    mf4_file = os.path.join(save_path,mf4_file_name)
-    print(f"正在转换文件: {blf_file} 到 {mf4_file}")
-    no_attribute_parse_list = ["InsStatus"]
-    blf_to_mf4(blf_file=blf_file,db_file=dbc_files,mf4_file=mf4_file,no_attribute_parse=no_attribute_parse_list )
-    # mf4_file_dir = "data"
-    # for file in os.listdir(blf_file_dir):
-    #     if file.endswith(".blf"):
-    #         blf_file = os.path.join(blf_file_dir,file)
-    #         mf4_file = os.path.join(mf4_file_dir,file.replace(".blf",".mf4"))
-    #         print(f"正在转换文件: {blf_file} 到 {mf4_file}")
-    #         no_attribute_parse_list = ["InsStatus"]
-    #         blf_to_mf4(blf_file=blf_file,db_file=dbc_files,mf4_file=mf4_file,no_attribute_parse=no_attribute_parse_list )
+                  1:"dbc/SAC/target_SFCANFD.dbc",
+                  2:"dbc/RTK/CAN_Protocol 2.0_20210507-motorola.dbc"}
+    save_path = "data/vehicle"
+    # blf_file_dir = "data/001.blf"
+    # mf4_file_name = os.path.basename(blf_file).replace(".blf",".mf4")
+    # mf4_file = os.path.join(save_path,mf4_file_name)
+    # print(f"正在转换文件: {blf_file} 到 {mf4_file}")
+    # no_attribute_parse_list = ["InsStatus"]
+    # blf_to_mf4(blf_file=blf_file,db_file=dbc_files,mf4_file=mf4_file,no_attribute_parse=no_attribute_parse_list )
+    blf_file_dir="data"
+    mf4_file_dir = "data/vehicle"
+    for file in os.listdir(blf_file_dir):
+        if file.endswith(".blf"):
+            blf_file = os.path.join(blf_file_dir,file)
+            mf4_file = os.path.join(mf4_file_dir,file.replace(".blf",".mf4"))
+            print(f"正在转换文件: {blf_file} 到 {mf4_file}")
+            no_attribute_parse_list = ["InsStatus"]
+            blf_to_mf4(blf_file=blf_file,db_file=dbc_files,mf4_file=mf4_file,no_attribute_parse=no_attribute_parse_list )
     print("转换完成")
                 
               
