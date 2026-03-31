@@ -7,6 +7,7 @@
  */
 
 #include "steering_gain_calibration.h"
+#include "../src/macros.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -481,9 +482,9 @@ void steering_gain_print_diagnostics(const SteeringGainManager_t *manager) {
     /* 转向范围 */
     printf("\n🎛️  转向角范围\n");
     printf("  最小: %.4f rad (%.2f度)\n", manager->min_steering_angle,
-           manager->min_steering_angle * 180.0 / M_PI);
+           manager->min_steering_angle * 180.0 / PI);
     printf("  最大: %.4f rad (%.2f度)\n", manager->max_steering_angle,
-           manager->max_steering_angle * 180.0 / M_PI);
+           manager->max_steering_angle * 180.0 / PI);
     
     /* 权重信息 */
     printf("\n权重信息\n");

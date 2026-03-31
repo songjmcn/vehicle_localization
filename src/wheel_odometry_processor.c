@@ -238,7 +238,7 @@ int wheel_odometry_processor_update(WheelOdometryProcessor_t *processor,
     }
 
     /* 脉冲 → 距离转换 */
-    double wheel_circumference = 2.0 * M_PI * processor->config.wheel_radius;
+    double wheel_circumference = 2.0 * PI * processor->config.wheel_radius;
     /* pulse_delta已经是(left_delta + right_delta) / 2的平均脉冲（见Line 189）
      * 直接用于距离计算，无需再除以2
      */

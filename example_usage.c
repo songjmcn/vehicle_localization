@@ -4,11 +4,18 @@
  */
 
 #include "src/localization_system.h"
+#include "src/localization_types.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <stdint.h>
+
+/* strtok_r 是 POSIX 函数，MSVC 提供等价的 strtok_s */
+#if defined(_MSC_VER)
+#  define strtok_r strtok_s
+#endif
 
 /**
  * @brief 模拟传感器数据的生成函数
@@ -72,6 +79,7 @@ typedef struct VehicleData{
     WheelDirection_t wheel_direction_rr;
     WheelDirection_t wheel_direction_rl;
     VehicleGear_t gear;
+    StandsStillStatus_t stands_still_status;
     float vehicle_speed;          // m/s
     float steering_wheel_angle;   // rad
     float imu_accel_x;            // m/s
@@ -111,99 +119,190 @@ WheelDirection_t get_wheel_direction(const char *dir_str){
         return WHEEL_DIRECRTION_INVALID;
     }
 }
+StandsStillStatus_t get_stands_still_status(const char *status_str){
+    if(strcmp(status_str,"Standstill")==0){
+        return STANDS_STILL_STOP;
+    }else if(strcmp(status_str,"Not Standstill")==0){
+        return STANDS_STILL_NOT_STOP;
+    }else{
+        return STANDS_STILL_UNKNOWN;
+    }
+}
+static void copy_string_trunc(char *dst, size_t dst_size, const char *src) {
+    if (dst == NULL || dst_size == 0) {
+        return;
+    }
+
+    if (src == NULL) {
+        dst[0] = '\0';
+        return;
+    }
+
+#if defined(_MSC_VER)
+    strncpy_s(dst, dst_size, src, _TRUNCATE);
+#else
+    strncpy(dst, src, dst_size - 1);
+    dst[dst_size - 1] = '\0';
+#endif
+}
+
+static FILE *open_file_portable(const char *path, const char *mode) {
+    FILE *file = NULL;
+
+    if (path == NULL || mode == NULL) {
+        return NULL;
+    }
+
+#if defined(_MSC_VER)
+    if (fopen_s(&file, path, mode) != 0) {
+        return NULL;
+    }
+    return file;
+#else
+    return fopen(path, mode);
+#endif
+}
+
+static char *trim_whitespace(char *text) {
+    char *end = NULL;
+
+    if (text == NULL) {
+        return NULL;
+    }
+
+    while (*text != '\0' && isspace((unsigned char)*text)) {
+        text++;
+    }
+
+    if (*text == '\0') {
+        return text;
+    }
+
+    end = text + strlen(text) - 1;
+    while (end > text && isspace((unsigned char)*end)) {
+        *end = '\0';
+        end--;
+    }
+
+    return text;
+}
+
+static bool parse_vehicle_csv_line(char *line, VehicleData *pdata) {
+    char *saveptr = NULL;
+    char *fields[13] = {0};
+    char gear[20] = {0};
+    char wheel_dir_rr[20] = {0};
+    char wheel_dir_rl[20] = {0};
+    double steering_angle_deg = 0.0;
+    int idx = 0;
+    int timestamp_index = 10;
+    char *token = NULL;
+
+    if (line == NULL || pdata == NULL) {
+        return false;
+    }
+
+    memset(pdata, 0, sizeof(*pdata));
+    token = strtok_r(line, ",", &saveptr);
+    while (token != NULL && idx < (int)(sizeof(fields) / sizeof(fields[0]))) {
+        fields[idx++] = trim_whitespace(token);
+        token = strtok_r(NULL, ",", &saveptr);
+    }
+
+    if (idx < 11) {
+        return false;
+    }
+
+    if (idx >= 12) {
+        timestamp_index = idx - 1;
+    }
+
+    pdata->vehicle_speed = strtof(fields[0], NULL);
+    pdata->wheel_counter_rr = (uint32_t)strtoul(fields[1], NULL, 10);
+    pdata->wheel_counter_rl = (uint32_t)strtoul(fields[2], NULL, 10);
+    copy_string_trunc(wheel_dir_rr, sizeof(wheel_dir_rr), fields[3]);
+    copy_string_trunc(wheel_dir_rl, sizeof(wheel_dir_rl), fields[4]);
+    steering_angle_deg = strtod(fields[5], NULL);
+    copy_string_trunc(gear, sizeof(gear), fields[6]);
+    pdata->imu_accel_x = strtof(fields[7], NULL);
+    pdata->imu_accel_y = strtof(fields[8], NULL);
+    pdata->imu_accel_z = strtof(fields[9], NULL);
+    pdata->timestamp_s = strtod(fields[timestamp_index], NULL);
+
+    pdata->gear = get_gear(gear);
+    pdata->steering_wheel_angle = (float)(steering_angle_deg * PI / 180.0);
+    pdata->wheel_direction_rr = get_wheel_direction(wheel_dir_rr);
+    pdata->wheel_direction_rl = get_wheel_direction(wheel_dir_rl);
+    pdata->stands_still_status = get_stands_still_status(fields[11]);
+
+    return true;
+}
+
 bool load_csv_data(const char *filename,VehicleDataArray *vehicle_data_array){
-    uint32_t line_num = 0;
-    int ret =0;
+    enum { CSV_LINE_BUFFER_SIZE = 8192 };
+    FILE *file = NULL;
+    char *line = NULL;
+    VehicleData *new_array = NULL;
+    uint32_t capacity = 0;
+    uint32_t count = 0;
+    bool header_skipped = false;
+
     if(filename==NULL || vehicle_data_array==NULL){
         return false;
     }
 
-    FILE *file= fopen(filename,"r");
+    file = open_file_portable(filename,"r");
     if(!file){
         return false;
     }
-    char *line = malloc(8192);
-    if(!line){
-        fclose(file);
-        return false;   
-    }
 
-    while(feof(file)==0){
-        if(fgets(line,4096,file)==NULL){
-            break;
-        }
-        line_num++;
-    }
-    fseek(file,0,SEEK_SET);
-    if(vehicle_data_array->data_array){
-        free(vehicle_data_array->data_array);
-        vehicle_data_array->data_array = NULL;
-        vehicle_data_array->data_count = 0;
-    }
-    vehicle_data_array->data_array = malloc(sizeof(VehicleData)*line_num);
-    if(!vehicle_data_array->data_array){
-        free(line);
+    line = (char *)malloc(CSV_LINE_BUFFER_SIZE);
+    if(!line){
         fclose(file);
         return false;
     }
-    for(uint32_t i=0;i<line_num;i++){
-        char gear[20]={0};
-        char wheel_dir_rr[20]={0};
-        char wheel_dir_rl[20]={0};
-        VehicleData *pdata =NULL;
-        if(fgets(line,4096,file)==NULL){
-            break;
-        }
-        if(i==0){
-            continue; //skip header
-        }   
 
-        pdata = vehicle_data_array->data_array+i-1;;
-        double steering_angle = 0; {
-            char *saveptr = NULL;
-            char *fields[11] = {0};
-            int idx = 0;
-            char *token = strtok_r(line, ",\r\n", &saveptr);
-            while (token != NULL && idx < 11) {
-                fields[idx++] = token;
-                token = strtok_r(NULL, ",\r\n", &saveptr);
-            }
-            ret = idx; /* parsed field count */
-            if (ret >= 11) {
-                pdata->vehicle_speed = (float) strtof(fields[0], NULL);
-                pdata->wheel_counter_rr = (uint32_t) strtoul(fields[1], NULL, 10);
-                pdata->wheel_counter_rl = (uint32_t) strtoul(fields[2], NULL, 10);
-                strncpy(wheel_dir_rr, fields[3], sizeof(wheel_dir_rr) - 1);
-                wheel_dir_rr[sizeof(wheel_dir_rr) - 1] = '\0';
-                strncpy(wheel_dir_rl, fields[4], sizeof(wheel_dir_rl) - 1);
-                wheel_dir_rl[sizeof(wheel_dir_rl) - 1] = '\0';
-                steering_angle = strtod(fields[5], NULL);
-                strncpy(gear, fields[6], sizeof(gear) - 1);
-                gear[sizeof(gear) - 1] = '\0';
-                pdata->imu_accel_x = (float) strtof(fields[7], NULL);
-                pdata->imu_accel_y = (float) strtof(fields[8], NULL);
-                pdata->imu_accel_z = (float) strtof(fields[9], NULL);
-                pdata->timestamp_s = strtod(fields[10], NULL);
-            }
-            else {
-                /* 解析失败，置零以避免未定义行为 */
-                pdata->vehicle_speed = 0.0f;
-                pdata->wheel_counter_rr = 0;
-                pdata->wheel_counter_rl = 0;
-                wheel_dir_rr[0] = wheel_dir_rl[0] = '\0';
-                steering_angle = 0.0;
-                gear[0] = '\0';
-                pdata->imu_accel_x = pdata->imu_accel_y = pdata->imu_accel_z = 0.0f;
-                pdata->timestamp_s = 0.0;
-            }
+    while(fgets(line, CSV_LINE_BUFFER_SIZE, file) != NULL){
+        char *current_line = trim_whitespace(line);
+
+        if(current_line[0] == '\0'){
+            continue;
         }
-         pdata->gear = get_gear(gear);
-         pdata->steering_wheel_angle = (float)(steering_angle * 3.14159265358979323846/180.0); // deg to rad
-         pdata->wheel_direction_rr = get_wheel_direction(wheel_dir_rr);
-         pdata->wheel_direction_rl = get_wheel_direction(wheel_dir_rl);
+
+        if(!header_skipped){
+            header_skipped = true;
+            continue;
+        }
+
+        if(count == capacity){
+            uint32_t new_capacity = (capacity == 0) ? 128u : capacity * 2u;
+            VehicleData *resized_array = (VehicleData *)realloc(new_array, sizeof(VehicleData) * new_capacity);
+            if(resized_array == NULL){
+                free(new_array);
+                free(line);
+                fclose(file);
+                return false;
+            }
+            new_array = resized_array;
+            capacity = new_capacity;
+        }
+
+        if(parse_vehicle_csv_line(current_line, &new_array[count])){
+            count++;
+        }
     }
-    vehicle_data_array->data_count = line_num-1;
-    return true;
+
+    free(line);
+    fclose(file);
+
+    if(vehicle_data_array->data_array){
+        free(vehicle_data_array->data_array);
+    }
+
+    vehicle_data_array->data_array = new_array;
+    vehicle_data_array->data_count = count;
+
+    return header_skipped;
 }
 /**
  * @brief 打印定位结果
@@ -245,7 +344,7 @@ const char* gear2str(VehicleGear_t gear){
     }
 }
 FILE* create_csv_file(const char* file_path) {
-    FILE* f=fopen(file_path,"w");
+    FILE* f = open_file_portable(file_path, "w");
     if (f==NULL) {
         return f;
     }
@@ -286,13 +385,13 @@ static double parse_json_number(const char *buf, const char *key) {
 LocalizationSystem_t localization_sys;
 void load_calibration_params_from_json(const char *path, CalibrationParams_t *calibration)
 {
-    FILE *cf = fopen(path, "r");
+    FILE *cf = open_file_portable(path, "r");
     if (cf)
     {
         fseek(cf, 0, SEEK_END);
         long sz = ftell(cf);
         fseek(cf, 0, SEEK_SET);
-        char *buf = malloc((size_t)sz + 1);
+        char *buf = (char *)malloc((size_t)sz + 1);
         if (buf)
         {
             if (fread(buf, 1, (size_t)sz, cf) == (size_t)sz)
@@ -326,7 +425,7 @@ void load_calibration_params_from_json(const char *path, CalibrationParams_t *ca
                 v = parse_json_number(buf, "\"ackermann_factor\"");
                 if (!isnan(v))
                     calibration->ackermann_factor = (float)v;
-                    v = parse_json_number(buf, "\"heading_bias_rad\"");
+                v = parse_json_number(buf, "\"heading_bias_rad\"");
                 if (!isnan(v))
                     calibration->heading_bias = (float)v;
             }
@@ -341,6 +440,7 @@ void load_calibration_params_from_json(const char *path, CalibrationParams_t *ca
     }
 }
 void print_help(int argc,char **argv){
+    (void)argc;
     printf("Usage: %s -i [input_vehicle_data_csv] -o [vehicle_localization_csv] -c [json_config_file]\n",argv[0]);
     printf("-i/--input: input vehicle data csv file path, using vehicle_data.csv as default if not set\n");
     printf("-o/--output: output vehicle localization csv file path, using vehicle_localization.csv as default if not set\n");
@@ -354,14 +454,36 @@ int main(int argc, char **argv)
     //VehicleDataArray vehicle_data_array={0};
     memset(&localization_sys, 0, sizeof(localization_sys));
     bool ret = false;
-    VehicleState_t initial_state = {
-        .x = 0.0,
-        .y = 0.0,
-        .heading = 0.0,
-        .v = 0.0,
-        .steering_angle = 0.0,
-        .timestamp = 1000
+    VehicleState_t initial_state;
+    CalibrationParams_t calibration = {
+        .wheel_calibration_factor = 1.0f,
+        .steering_angle_offset    = 0.0f,
+        .steering_angle_gain      = 1.0f,
+        .heading_bias             = 0.0f,
+        .ackermann_factor         = 1.0f,
+        .imu_accel_bias_x         = 0.0f,
+        .imu_accel_bias_y         = 0.0f,
+        .imu_gyro_bias_z          = 0.0f,
+        .imu_accel_scale_x        = 1.0f,
+        .imu_accel_scale_y        = 1.0f,
+        .imu_lateral_accel_bias   = 0.0f,
+        .imu_lateral_accel_scale  = 1.0f,
     };
+    VehicleDataArray vehicle_data_array;
+
+    memset(&initial_state, 0, sizeof(initial_state));
+    initial_state.x = 0.0f;
+    initial_state.y = 0.0f;
+    initial_state.heading = 0.0f;
+    initial_state.v = 0.0f;
+    initial_state.yaw_rate = 0.0f;
+    initial_state.steering_angle = 0.0f;
+    initial_state.velocity = 0.0f;
+    initial_state.timestamp = 1000;
+    initial_state.gear = GEAR_INVALID;
+    initial_state.direction = DIRECTION_INVALID;
+
+    memset(&vehicle_data_array, 0, sizeof(vehicle_data_array));
     
     if (localization_system_init(&localization_sys, &initial_state) != 0) {
         printf("ERROR: Failed to initialize localization system!\n");
@@ -370,23 +492,7 @@ int main(int argc, char **argv)
 
     /* 尝试从 `calibration.json` 加载标定参数，如果失败则使用默认硬编码值 */
 
-    CalibrationParams_t calibration = {0};
-    /* 默认值（保留原示例的默认参数） */
-    calibration.wheel_calibration_factor = 1.0f;
-    calibration.heading_bias = 0.0f;
-    calibration.steering_angle_offset = 0.0f;
-    calibration.steering_angle_gain = 1.0f;
-    calibration.imu_accel_bias_x = 0.0f;
-    calibration.imu_accel_bias_y = 0.0f;
-    calibration.imu_gyro_bias_z = 0.0f;
-    calibration.imu_accel_scale_x = 1.0f;
-    calibration.imu_accel_scale_y = 1.0f;
-    calibration.imu_lateral_accel_bias = 0.0f;
-    calibration.imu_lateral_accel_scale = 1.0f;
-
-    
-
-    // ...existing code...
+    /* 默认值会被 load_calibration_params_from_json 覆盖（如果 JSON 文件存在） */
 
     
     
@@ -439,7 +545,6 @@ int main(int argc, char **argv)
     /* 脉冲计数模拟变量 */
     uint32_t accumulated_pulses = 0;
     (void)accumulated_pulses;  /* 此示例中未使用，保留供用户参考 */
-    VehicleDataArray vehicle_data_array={0};
     const char *csv_file = "vehicle_data.csv";
     const char *localization_csv_file = "vehicle_localization.csv";
     const char *config_file = "calibration.json";

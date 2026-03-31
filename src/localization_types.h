@@ -56,6 +56,11 @@ typedef enum{
     WHEEL_DIRECTION_REVERSE = 2,   /**< 车轮后退 */
     WHEEL_DIRECTION_STOP = 3,
 }WheelDirection_t;
+typedef enum{
+    STANDS_STILL_UNKNOWN = 0,
+    STANDS_STILL_STOP = 1,
+    STANDS_STILL_NOT_STOP = 2,
+}StandsStillStatus_t;
 /**
  * @brief 车辆运动方向枚举（派生值）
  * 从档位和速度综合计算而来
@@ -160,6 +165,7 @@ typedef struct {
 typedef struct {
     IMUData_t imu;
     WheelOdometryData_t wheel_odometry;
+    StandsStillStatus_t stands_still_status;
     SteeringData_t steering;
     VehicleGear_t gear;                      /**< 当前档位 */
     uint64_t timestamp;                      /**< 融合时间戳 */

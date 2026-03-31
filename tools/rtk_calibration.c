@@ -8,6 +8,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
+#include "../src/macros.h"
 
 int rtk_calibration_init(RTKCalibrationManager_t *manager, uint32_t max_points) {
     if (!manager || max_points == 0) {
@@ -593,7 +594,7 @@ static void estimate_steering_calibration(RTKCalibrationManager_t *manager,
     /* 参数有效性检查 */
     if (fabs(*offset) > 0.3) {  /* ±0.3 rad ≈ ±17° */
         fprintf(stderr, "⚠️  WARNING: steering_angle_offset = %.6f rad (%.2f°) exceeds ±0.3 rad\n",
-                *offset, *offset * 180.0 / M_PI);
+                *offset, *offset * 180.0 / PI);
         fprintf(stderr, "   Possible causes:\n");
         fprintf(stderr, "   - Severe steering angle calibration error\n");
         fprintf(stderr, "   - Significant kinematic model mismatch\n");
@@ -933,8 +934,8 @@ static double compute_heading_error(double odo_heading, double rtk_heading) {
     double error = rtk_heading - odo_heading;
     
     /* 归一化到 [-π, π] 范围 */
-    while (error > M_PI) error -= 2.0 * M_PI;
-    while (error < -M_PI) error += 2.0 * M_PI;
+    while (error > PI) error -= 2.0 * PI;
+    while (error < -PI) error += 2.0 * PI;
     
     return error;
 }

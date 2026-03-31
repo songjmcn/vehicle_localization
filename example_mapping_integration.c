@@ -44,14 +44,14 @@ void print_simulation_step(int step, double steering_wheel, double velocity,
                           double left_wheel, double right_wheel, 
                           double mean_angle, double yaw_rate) {
     printf("步骤 %d:\n", step);
-    printf("  方向盘角度:        %.4f rad (%.2f deg)\n", steering_wheel, steering_wheel * 180.0 / M_PI);
+    printf("  方向盘角度:        %.4f rad (%.2f deg)\n", steering_wheel, steering_wheel * 180.0 / PI);
     printf("  车速:              %.2f m/s\n", velocity);
-    printf("  左轮转角:          %.4f rad (%.2f deg)\n", left_wheel, left_wheel * 180.0 / M_PI);
-    printf("  右轮转角:          %.4f rad (%.2f deg)\n", right_wheel, right_wheel * 180.0 / M_PI);
-    printf("  平均转角:          %.4f rad (%.2f deg)\n", mean_angle, mean_angle * 180.0 / M_PI);
-    printf("  航向角速率:        %.4f rad/s (%.2f deg/s)\n", yaw_rate, yaw_rate * 180.0 / M_PI);
+    printf("  左轮转角:          %.4f rad (%.2f deg)\n", left_wheel, left_wheel * 180.0 / PI);
+    printf("  右轮转角:          %.4f rad (%.2f deg)\n", right_wheel, right_wheel * 180.0 / PI);
+    printf("  平均转角:          %.4f rad (%.2f deg)\n", mean_angle, mean_angle * 180.0 / PI);
+    printf("  航向角速率:        %.4f rad/s (%.2f deg/s)\n", yaw_rate, yaw_rate * 180.0 / PI);
     printf("  位置:              (%.2f, %.2f) m\n", state.position_x, state.position_y);
-    printf("  航向:              %.2f deg\n\n", state.heading * 180.0 / M_PI);
+    printf("  航向:              %.2f deg\n\n", state.heading * 180.0 / PI);
 }
 
 void simulate_maneuver(const char *maneuver_name, double steering_angle, double velocity, 
@@ -107,7 +107,7 @@ void compare_models() {
     double velocity = 10.0;
     
     for (int i = -30; i <= 30; i += 10) {
-        double steering_wheel = i * M_PI / 180.0;
+        double steering_wheel = i * PI / 180.0;
         
         // 映射表模型（注：需要实际的 config 参数）
         // steering_model_update(NULL, steering_wheel, 0);  // TODO: 需要实际的 config
@@ -137,7 +137,7 @@ void analyze_ackermann_effect() {
     printf("────────────────────────────────────────────────────────────────\n");
     
     for (int i = -40; i <= 40; i += 10) {
-        double steering_wheel = i * M_PI / 180.0;
+        double steering_wheel = i * PI / 180.0;
         double left_wheel, right_wheel, mean_angle;
         
         // 注：以下需要实际的 steering config
@@ -159,12 +159,12 @@ void analyze_ackermann_effect() {
         }
         mean_angle = (left_wheel + right_wheel) / 2.0;
         
-        double diff_deg = (left_wheel - right_wheel) * 180.0 / M_PI;
+        double diff_deg = (left_wheel - right_wheel) * 180.0 / PI;
         
         printf("%-15d %-15.2f %-15.2f %-15.2f\n", 
                i, 
-               left_wheel * 180.0 / M_PI, 
-               right_wheel * 180.0 / M_PI,
+               left_wheel * 180.0 / PI, 
+               right_wheel * 180.0 / PI,
                fabs(diff_deg));
     }
 }
@@ -187,7 +187,7 @@ int main(void) {
     // 生成-π到π的均匀采样点
     for (int i = 0; i < num_points; i++) {
         double t = (i - num_points/2.0) / (num_points/2.0);  // -1 to 1
-        sw_angles[i] = t * M_PI;
+        sw_angles[i] = t * PI;
         
         // 渐进式特性：基础齿比16，大转角时齿比变小（更灵敏）
         double ratio = 16.0 - 4.0 * fabs(t);
@@ -229,13 +229,13 @@ int main(void) {
     simulate_maneuver("直线行驶", 0.0, 10.0, 3.0, 3);
     
     // 模拟2: 缓慢左转
-    simulate_maneuver("缓慢左转 (方向盘 -15°)", -15.0 * M_PI / 180.0, 10.0, 5.0, 5);
+    simulate_maneuver("缓慢左转 (方向盘 -15°)", -15.0 * PI / 180.0, 10.0, 5.0, 5);
     
     // 模拟3: 快速右转
-    simulate_maneuver("快速右转 (方向盘 +30°)", 30.0 * M_PI / 180.0, 5.0, 4.0, 4);
+    simulate_maneuver("快速右转 (方向盘 +30°)", 30.0 * PI / 180.0, 5.0, 4.0, 4);
     
     // 模拟4: 变速左转
-    simulate_maneuver("高速左转 (方向盘 -20°)", -20.0 * M_PI / 180.0, 15.0, 3.0, 3);
+    simulate_maneuver("高速左转 (方向盘 -20°)", -20.0 * PI / 180.0, 15.0, 3.0, 3);
     
     // 对比分析
     compare_models();

@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#include "../src/macros.h"
 
 #define MAX_MAPPING_POINTS 51
 #define CSV_FILENAME "steering_mapping.csv"
@@ -133,9 +134,9 @@ static int generate_mapping_table(int num_points,
         double right_wheel = left_wheel * (1.0 - 0.005 * fabs(steering_wheel));
         
         /* 转换为度数 */
-        double steering_wheel_deg = steering_wheel * 180.0 / M_PI;
-        double left_wheel_deg = left_wheel * 180.0 / M_PI;
-        double right_wheel_deg = right_wheel * 180.0 / M_PI;
+        double steering_wheel_deg = steering_wheel * 180.0 / PI;
+        double left_wheel_deg = left_wheel * 180.0 / PI;
+        double right_wheel_deg = right_wheel * 180.0 / PI;
         
         /* 写入CSV行 */
         fprintf(fp, "%.6f,%.2f,%.6f,%.2f,%.6f,%.2f\n",

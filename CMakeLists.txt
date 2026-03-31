@@ -6,8 +6,14 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # ========== 构建类型配置 ==========
-# 公共编译选项
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
+# 公共编译选项 - 根据编译器设置警告级别
+if(MSVC)
+    # MSVC: /W4 = extra warnings (equivalent to -Wextra)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W4")
+else()
+    # GCC/Clang: -Wall -Wextra
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
+endif()
 
 # 设置可用的构建类型和默认值
 if(NOT CMAKE_BUILD_TYPE)
@@ -17,29 +23,46 @@ endif()
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug;Release;ReleaseWithDebugInfo")
 
 # Debug 构建：最大调试支持，无优化
-# - -g: 包含调试符号
-# - -O0: 无优化（保持代码结构便于调试）
-# - -DDEBUG: 定义DEBUG宏，用于调试日志和检查
+# GCC:  -g: 包含调试符号，-O0: 无优化，-DDEBUG: 定义DEBUG宏
+# MSVC: /Zi: 包含调试符号，/Od: 无优化
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CMAKE_C_FLAGS_DEBUG "-g -O0 -DDEBUG")
+    if(MSVC)
+        set(CMAKE_C_FLAGS_DEBUG "/Zi /Od -DDEBUG")
+    else()
+        set(CMAKE_C_FLAGS_DEBUG "-g -O0 -DDEBUG")
+    endif()
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_DEBUG}")
 endif()
 
 # Release 构建：最大优化，无调试信息
-# - -O3: 最高级别优化（代码体积和性能）
-# - -DNDEBUG: 禁用断言，移除调试代码
+# GCC:  -O3: 最高级别优化，-DNDEBUG: 禁用断言
+# MSVC: /O2: 优化，/DNDEBUG: 禁用断言
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
+    if(MSVC)
+        set(CMAKE_C_FLAGS_RELEASE "/O2 -DNDEBUG")
+    else()
+        set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
+    endif()
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_RELEASE}")
 endif()
 
 # ReleaseWithDebugInfo 构建：中等优化 + 调试符号
-# - -g: 包含调试符号（可用于gdb调试和栈跟踪）
-# - -O2: 中级优化（相比O3更保守，但仍有显著性能提升）
-# - -DNDEBUG: 禁用断言，便于生产环境
+# GCC:  -g: 调试符号，-O2: 中级优化，-DNDEBUG: 禁用断言
+# MSVC: /Zi: 调试符号，/O2: 优化，-DNDEBUG: 禁用断言
 if(CMAKE_BUILD_TYPE STREQUAL "ReleaseWithDebugInfo")
-    set(CMAKE_C_FLAGS_RELWITHDEBINFO "-g -O2 -DNDEBUG")
+    if(MSVC)
+        set(CMAKE_C_FLAGS_RELWITHDEBINFO "/Zi /O2 -DNDEBUG")
+    else()
+        set(CMAKE_C_FLAGS_RELWITHDEBINFO "-g -O2 -DNDEBUG")
+    endif()
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+endif()
+
+# MSVC 不需要单独链接 m.lib，数学库已内置在 C 运行时
+if(MSVC)
+    set(MATH_LIB "")
+else()
+    set(MATH_LIB m)
 endif()
 
 # 项目版本
@@ -70,26 +93,27 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/tools)
 add_library(localization_lib ${SOURCES})
 
 # 链接数学库
-target_link_libraries(localization_lib PRIVATE m)
+target_link_libraries(localization_lib PRIVATE ${MATH_LIB})
 
 # 可执行文件 - 定位系统示例
 add_executable(localization_example example_usage.c)
-target_link_libraries(localization_example PRIVATE localization_lib m)
+target_link_libraries(localization_example PRIVATE localization_lib ${MATH_LIB})
 
 # 可执行文件 - 标定CSV数据生成工具
 add_executable(generate_calibration_csv tools/generate_calibration_csv.c)
+target_link_libraries(generate_calibration_csv PRIVATE ${MATH_LIB})
 
 # 可执行文件 - 转向映射表生成工具
 add_executable(generate_steering_mapping tools/generate_steering_mapping.c)
-target_link_libraries(generate_steering_mapping PRIVATE m)
+target_link_libraries(generate_steering_mapping PRIVATE ${MATH_LIB})
 
 # 可执行文件 - 离线标定工具（超简化版，无依赖）
-add_executable(offline_calibration tools/offline_calibration.c)
+# add_executable(offline_calibration tools/offline_calibration.c)
 
 
 # 可执行文件 - 转向角映射表集成示例
 add_executable(example_mapping_integration example_mapping_integration.c src/steering_model.c src/motion_model.c)
-target_link_libraries(example_mapping_integration PRIVATE m)
+target_link_libraries(example_mapping_integration PRIVATE ${MATH_LIB})
 
 # 测试可执行文件 - Task 4: 转向模型与RTK标定集成测试
 # add_executable(test_steering_rtk_integration tools/test_steering_rtk_integration.c)
@@ -100,11 +124,11 @@ target_link_libraries(example_mapping_integration PRIVATE m)
 # target_link_libraries(test_rtk_phase2_integration PRIVATE localization_lib m)
 
 # 离线标定工具 - 从 CSV 文件进行标定
-add_executable(offline_calibration_from_csv
-    tools/offline_calibration_csv.c
-    tools/main_offline_calibration.c
-)
-target_link_libraries(offline_calibration_from_csv PRIVATE localization_lib m)
+# add_executable(offline_calibration_from_csv
+#     tools/offline_calibration_csv.c
+#     tools/main_offline_calibration.c
+# )
+# target_link_libraries(offline_calibration_from_csv PRIVATE localization_lib m)
 
 # 安装目标
 install(TARGETS localization_example
