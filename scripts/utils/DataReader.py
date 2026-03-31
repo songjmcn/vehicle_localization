@@ -28,9 +28,15 @@ class LocalizationInfo:
             self.steering_angle = steering_angle
         if steering_wheel_angle is not None:
             self.steering_wheel_angle = steering_wheel_angle
-
+def stand_still_str_format(v):
+    if v == "VehSdslSts_0_not_standstill":
+        return "Not Standstill"
+    elif v == "VehSdslSts_1_standstill":
+        return "Standstill"
+    else:
+        return "Unknown"
 class VehicleInfo:
-    def __init__(self,rl_wheel_counter:int,rr_wheel_counter:int,rl_wheel_direction:str,rr_wheel_direction:str, velocity:float,steering_wheel_angle:float,gear:str,imu_x_acc:float,imu_y_acc:float,timestamp:float):
+    def __init__(self,rl_wheel_counter:int,rr_wheel_counter:int,rl_wheel_direction:str,rr_wheel_direction:str, velocity:float,steering_wheel_angle:float,gear:str,imu_x_acc:float,imu_y_acc:float,imu_yaw_rate:float,stand_still:str,timestamp:float):
         '''
         初始化VehicleInfo对象
         :param rl_wheel_counter: 左后轮轮速计计数值
@@ -60,9 +66,19 @@ class VehicleInfo:
         self.imu_y_acc = imu_y_acc
         self.rl_wheel_counter = rl_wheel_counter
         self.rr_wheel_counter = rr_wheel_counter
-        self.rr_wheel_direction = rr_wheel_direction.decode('utf-8')
-        self.rl_wheel_direction = rl_wheel_direction.decode('utf-8')
-        self.gear = gear.decode('utf-8')
+        self.stand_still = stand_still_str_format(stand_still)
+
+        def _to_text(v):
+            if isinstance(v, (bytes, bytearray)):
+                return v.decode('utf-8', errors='ignore')
+            if v is None:
+                return "Unknown"
+            return str(v)
+
+        self.rr_wheel_direction = _to_text(rr_wheel_direction)
+        self.rl_wheel_direction = _to_text(rl_wheel_direction)
+        self.gear = _to_text(gear)
+        self.imu_yaw_rate = imu_yaw_rate
         self.timestamp = timestamp
 def read_localization_data_from_csv(csv_file:str):
     if not csv_file:
@@ -85,12 +101,12 @@ def read_localization_data_from_csv(csv_file:str):
             print(f"❌ 错误：CSV 缺少列 {req}")
             return None
 
-    for index, row in data.iterrows():
+    for _, row in data.iterrows():
         x = float(row['x'])
         y = float(row['y'])
         heading = float(row['heading'])
         timestamp = float(row['timestamp'])/1000.0  # 转换为秒
-        steering_angle = float(row['steering_angle'])
+        steering_angle = None
         if steering_col is not None and pd.notna(row.get(steering_col)):
             try:
                 steering_angle = float(row[steering_col])
@@ -108,28 +124,44 @@ def read_mf4_vehicle_data(mf4_file:str,save_csv_file:str=None):
         localization_data: LocalizationInfo对象列表
     """
     mdf = MDF(mf4_file)
-    # vehicle_signal_mapping = {"ABS_RRWheelSpeedRC":"WheelCounter_RR",
-    #                           "ABS_RLWheelSpeedRC":"WheelCounter_RL",
-    #                           "ABS_RRWheelDirection":"WheelCounter_Dir_RR",
-    #                           "ABS_RLWheelDirection":"WheelCounter_Dir_RL",
-    #                           "SAS_SteerWheelAngle":"SteeringWheel_Angle",
-    #                           "VCU_ModeGearSts  ":"GearMode",
-    #                           "ESC_LongitudeACC":"IMU_y_acc",
-    #                           "ESC_LateralACC":"IMU_x_acc",
-    #                           "ABS_VehicleSpeed":"VehicleSpeed"}
-    vehicle_signals = ['ABS_RRWheelSpeedRC','ABS_RLWheelSpeedRC','ABS_RRWheelDirection','ABS_RLWheelDirection','SAS_SteerWheelAngle',
-                       'VCU_ModeGearSts','ESC_LongitudeACC','ESC_LateralACC','ABS_VehicleSpeed']
+    all_channels = set(mdf.channels_db.keys())
+
+    required_signals = [
+        'IRDrvnWhlRotlDistPlsCtr',
+        'ILDrvnWhlRotlDistPlsCtr',
+        'IRDrvnWhlRotlDircn',
+        'ILDrvnWhlRotlDircn',
+        'IStrgWhlAng',
+        'IVehSpdAvg',
+        'IVehDynYawRate_SDM',
+        'IVSELatAcc_SDM',
+        'IVSELongtAcc_SDM',
+        'IVehSdslSts'
+    ]
+    optional_signals = []
+    gear_candidates = ['ITrShftLvrPos', 'VCU_ModeGearSts', 'ISCUShiftrLvrPosn']
+
+    missing_required = [s for s in required_signals if s not in all_channels]
+    if missing_required:
+        raise ValueError(f"MF4缺少必须信号: {missing_required}")
+
+    gear_signal = next((s for s in gear_candidates if s in all_channels), None)
+    if gear_signal is None:
+        print("⚠ 未找到挡位信号(ITrShftLvrPos/VCU_ModeGearSts/ISCUShiftrLvrPosn)，将使用轮方向推断挡位")
+    else:
+        print(f"使用挡位信号: {gear_signal}")
+
+    vehicle_signals = required_signals + [s for s in optional_signals if s in all_channels] + ([gear_signal] if gear_signal else [])
     df_vehicle = mdf.select(vehicle_signals)
-    '''
-    以ABS_RRWheelSpeedRC和ABS_RLWheelSpeedRC时间戳为基准
-    '''
-    index = vehicle_signals.index('ABS_RRWheelSpeedRC')
-    ABS_RRWheelSpeedRC_signal  = df_vehicle[index]
-    ABS_RRWheelSpeedRC_samples = ABS_RRWheelSpeedRC_signal.samples.tolist()
-    ABS_RRWheelSpeedRC_timestamps = ABS_RRWheelSpeedRC_signal.timestamps.tolist()
-    index = vehicle_signals.index('ABS_RLWheelSpeedRC')
-    ABS_RLWHEELSpeedRC_signal  = df_vehicle[index]
-    ABS_RLWHEELSpeedRC_samples = ABS_RLWHEELSpeedRC_signal.samples.tolist()    
+
+    index = vehicle_signals.index('IRDrvnWhlRotlDistPlsCtr')
+    IRDrvnWhlRotlDistPlsCtr_signal  = df_vehicle[index]
+    IRDrvnWhlRotlDistPlsCtr_samples = IRDrvnWhlRotlDistPlsCtr_signal.samples.tolist()
+    IRDrvnWhlRotlDistPlsCtr_timestamps = IRDrvnWhlRotlDistPlsCtr_signal.timestamps.tolist()
+    index = vehicle_signals.index('ILDrvnWhlRotlDistPlsCtr')
+    ILDrvnWhlRotlDistPlsCtr_signal  = df_vehicle[index]
+    ILDrvnWhlRotlDistPlsCtr_samples = ILDrvnWhlRotlDistPlsCtr_signal.samples.tolist()
+
     def get_nearest_signal_value(signal, target_ts,delta_time:float=0.015):
         """
         在timestamps中查找与target_ts时间差<0.01秒的信号，返回其索引，否则返回None
@@ -139,50 +171,106 @@ def read_mf4_vehicle_data(mf4_file:str,save_csv_file:str=None):
             if abs(ts - target_ts) < delta_time:
                 return idx
         return None
+
+    def to_text(v):
+        if isinstance(v, (bytes, bytearray)):
+            return v.decode('utf-8', errors='ignore')
+        if v is None:
+            return "Unknown"
+        return str(v)
+
+    def normalize_direction(v):
+        text = to_text(v)
+        if "Backward" in text or "_2_" in text:
+            return "Backward"
+        if "Forward" in text or "_1_" in text:
+            return "Forward"
+        return "Unknown"
+
+    def normalize_gear(v):
+        text = to_text(v)
+        up = text.upper()
+        if "PARK" in up or up in {"P", "1"}:
+            return "P"
+        if "REVERSE" in up or up in {"R", "2", "7"}:
+            return "R"
+        if "NEUTRAL" in up or up in {"N", "3", "6"}:
+            return "N"
+        if "DRIVE" in up or up in {"D", "4", "5"}:
+            return "D"
+        return text
+
     vehicle_info_list = []
-    ABS_RLWheelDirection_index =  vehicle_signals.index('ABS_RLWheelDirection')
-    ABS_RRWheelDirection_index =  vehicle_signals.index('ABS_RRWheelDirection')
-    SAS_SteerWheelAngle_index =  vehicle_signals.index('SAS_SteerWheelAngle')
-    ABS_VehicleSpeed_index =  vehicle_signals.index('ABS_VehicleSpeed')
-    ESC_LateralACC_index =  vehicle_signals.index('ESC_LateralACC')
-    ESC_LongitudeACC_index =  vehicle_signals.index('ESC_LongitudeACC')
-    VCU_ModeGearSts_index =  vehicle_signals.index('VCU_ModeGearSts')
-    for i, ts in enumerate(ABS_RRWheelSpeedRC_timestamps):
+    ILDrvnWhlRotlDircn_index =  vehicle_signals.index('ILDrvnWhlRotlDircn')
+    IRDrvnWhlRotlDircn_index =  vehicle_signals.index('IRDrvnWhlRotlDircn')
+    IStrgWhlAng_index =  vehicle_signals.index('IStrgWhlAng')
+    IVehSpdAvg_index =  vehicle_signals.index('IVehSpdAvg')
+    IVSELatAcc_SDM_index = vehicle_signals.index('IVSELatAcc_SDM') if 'IVSELatAcc_SDM' in vehicle_signals else None
+    IVSELongtAcc_SDM_index = vehicle_signals.index('IVSELongtAcc_SDM') if 'IVSELongtAcc_SDM' in vehicle_signals else None
+    IVehDynYawRate_SDM_index = vehicle_signals.index('IVehDynYawRate_SDM') if 'IVehDynYawRate_SDM' in vehicle_signals else None
+    gear_signal_index = vehicle_signals.index(gear_signal) if gear_signal else None
+    IVehSdslSts_index = vehicle_signals.index('IVehSdslSts') if 'IVehSdslSts' in vehicle_signals else None
+    for i, ts in enumerate(IRDrvnWhlRotlDistPlsCtr_timestamps):
         #print(f'processing timestamp:{ts}, index:{i}')
-        rl_wheel_counter = ABS_RLWHEELSpeedRC_samples[i]
-        rr_wheel_counter = ABS_RRWheelSpeedRC_samples[i]
+        rl_wheel_counter = ILDrvnWhlRotlDistPlsCtr_samples[i]
+        rr_wheel_counter = IRDrvnWhlRotlDistPlsCtr_samples[i]
         rl_wheel_direction = None
         rr_wheel_direction = None
         steering_wheel_angle = None
         vehicle_speed = None
         imu_x_acc = None
         imu_y_acc = None
+        gear = None
+        stand_still = None
 
         #print('ABS_RRWheelDirection_index:',ABS_RRWheelDirection_index)
         #print('ABS_RLWheelDirection_index:',ABS_RLWheelDirection_index)
         # 查找最近的信号值
-        idx = get_nearest_signal_value(df_vehicle[ABS_RRWheelDirection_index], ts,delta_time = 0.015)
+        idx = get_nearest_signal_value(df_vehicle[ILDrvnWhlRotlDircn_index], ts,delta_time = 0.015)
         if idx is not None:
-            rl_wheel_direction = df_vehicle[ABS_RLWheelDirection_index].samples[idx]
-        idx = get_nearest_signal_value(df_vehicle[ABS_RRWheelDirection_index], ts,delta_time = 0.015)
+            rl_wheel_direction = df_vehicle[ILDrvnWhlRotlDircn_index].samples[idx]
+        idx = get_nearest_signal_value(df_vehicle[IRDrvnWhlRotlDircn_index], ts,delta_time = 0.015)
         #print('idx for ABS_RRWheelDirection:',idx)
         if idx is not None:
-            rr_wheel_direction = df_vehicle[ABS_RRWheelDirection_index].samples[idx]
-        idx = get_nearest_signal_value(df_vehicle[SAS_SteerWheelAngle_index], ts)
+            rr_wheel_direction = df_vehicle[IRDrvnWhlRotlDircn_index].samples[idx]
+        idx = get_nearest_signal_value(df_vehicle[IStrgWhlAng_index], ts)
         if idx is not None:
-            steering_wheel_angle = df_vehicle[SAS_SteerWheelAngle_index].samples[idx]
-        idx = get_nearest_signal_value(df_vehicle[ABS_VehicleSpeed_index], ts)
+            steering_wheel_angle = df_vehicle[IStrgWhlAng_index].samples[idx]
+        idx = get_nearest_signal_value(df_vehicle[IVehSpdAvg_index], ts)
         if idx is not None:
-            vehicle_speed = df_vehicle[ABS_VehicleSpeed_index].samples[idx]
-        idx = get_nearest_signal_value(df_vehicle[ESC_LateralACC_index], ts)
-        if idx is not None:
-            imu_y_acc = df_vehicle[ESC_LateralACC_index].samples[idx]
-        idx = get_nearest_signal_value(df_vehicle[ESC_LongitudeACC_index], ts)
-        if idx is not None:
-            imu_x_acc = df_vehicle[ESC_LongitudeACC_index].samples[idx]
-        idx = get_nearest_signal_value(df_vehicle[VCU_ModeGearSts_index], ts)
-        if idx is not None:
-            gear = df_vehicle[VCU_ModeGearSts_index].samples[idx]
+            vehicle_speed = df_vehicle[IVehSpdAvg_index].samples[idx]
+        if IVSELatAcc_SDM_index is not None:
+            idx = get_nearest_signal_value(df_vehicle[IVSELatAcc_SDM_index], ts)
+            if idx is not None:
+                imu_y_acc = df_vehicle[IVSELatAcc_SDM_index].samples[idx]
+        if IVSELongtAcc_SDM_index is not None:
+            idx = get_nearest_signal_value(df_vehicle[IVSELongtAcc_SDM_index], ts)
+            if idx is not None:
+                imu_x_acc = df_vehicle[IVSELongtAcc_SDM_index].samples[idx]
+        if gear_signal_index is not None:
+            idx = get_nearest_signal_value(df_vehicle[gear_signal_index], ts)
+            if idx is not None:
+                gear = normalize_gear(df_vehicle[gear_signal_index].samples[idx])
+        if IVehDynYawRate_SDM_index is not None:
+            idx = get_nearest_signal_value(df_vehicle[IVehDynYawRate_SDM_index], ts)
+            if idx is not None:
+                imu_yaw_rate = df_vehicle[IVehDynYawRate_SDM_index].samples[idx]
+            else:
+                imu_yaw_rate = None
+        if IVehSdslSts_index is not None:
+            idx = get_nearest_signal_value(df_vehicle[IVehSdslSts_index], ts)
+            if idx is not None:
+                stand_still = to_text(df_vehicle[IVehSdslSts_index].samples[idx])
+
+        rr_wheel_direction = normalize_direction(rr_wheel_direction)
+        rl_wheel_direction = normalize_direction(rl_wheel_direction)
+
+        if gear is None:
+            if rr_wheel_direction == "Backward" or rl_wheel_direction == "Backward":
+                gear = "R"
+            else:
+                gear = "D"
+
         vehicle_info = VehicleInfo(rl_wheel_counter=rl_wheel_counter,
                                    rr_wheel_counter=rr_wheel_counter,
                                    rl_wheel_direction=rl_wheel_direction,
@@ -192,6 +280,8 @@ def read_mf4_vehicle_data(mf4_file:str,save_csv_file:str=None):
                                    gear = gear,
                                    imu_x_acc=imu_x_acc,
                                    imu_y_acc=imu_y_acc,
+                                   imu_yaw_rate=imu_yaw_rate,
+                                   stand_still=stand_still,
                                    timestamp=ts)
         #print(f"时间: {datetime.fromtimestamp(ts,tz=ZoneInfo('UTC'))}, 速度: {vehicle_info.velocity} m/s, 方向盘转角: {vehicle_info.steering_wheel_angle} rad")
         vehicle_info_list.append(vehicle_info)
@@ -199,13 +289,14 @@ def read_mf4_vehicle_data(mf4_file:str,save_csv_file:str=None):
     if save_csv_file is None:
         save_csv_file = "vehicle_data.csv"
     paretn_dir = os.path.dirname(save_csv_file)
-    if not os.path.exists(paretn_dir):
+    if paretn_dir and not os.path.exists(paretn_dir):
         os.makedirs(paretn_dir)
-    with open(save_csv_file,'w') as f:
+    with open(save_csv_file,'w', encoding='utf-8', newline='') as f:
         # write header
-        f.write("Speed,WheelCounter_RR,WheelCounter_RL,WheelCounter_Dir_RR,WheelCounter_Dir_RL,SteeringWheel_Angle,GearMode,IMU_x_acc,IMU_y_acc,IMU_z_acc,timestamp\r\n")
+        f.write("Speed,WheelCounter_RR,WheelCounter_RL,WheelCounter_Dir_RR,WheelCounter_Dir_RL,SteeringWheel_Angle,GearMode,IMU_x_acc,IMU_y_acc,IMU_z_acc,IMU_yaw_rate,StandStill,timestamp\r\n")
         for info in vehicle_info_list:
-            f.write(f"{info.velocity},{info.rr_wheel_counter},{info.rl_wheel_counter},{info.rr_wheel_direction},{info.rl_wheel_direction},{info.steering_wheel_angle},{info.gear},{info.imu_x_acc},{info.imu_y_acc},0,{info.timestamp}\r\n")
+            f.write(f"{info.velocity},{info.rr_wheel_counter},{info.rl_wheel_counter},{info.rr_wheel_direction},{info.rl_wheel_direction},{info.steering_wheel_angle},{info.gear},{info.imu_x_acc},{info.imu_y_acc},0,{info.imu_yaw_rate},{info.stand_still},{info.timestamp}\r\n")
+    return vehicle_info_list
 if __name__=="__main__":
     #csv_file = "/Users/alex/workspace/code_review/vehicle_localization/vehicle_localization.csv"
     #localization_data = read_localization_data_from_csv(csv_file)
@@ -217,5 +308,5 @@ if __name__=="__main__":
     '''
     test load vehicle data
     '''    
-    read_mf4_vehicle_data("/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stype_backward_5kph_001.mf4",
-                          "/Users/alex/workspace/code_review/vehicle_localization/data/Lev01_R19_Stype_backward_5kph_001/vehicle_data.csv")
+    read_mf4_vehicle_data("data/vehicle/001.mf4",
+                          "data/vehicle/csv/forward_straight_data.csv")

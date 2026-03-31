@@ -8,6 +8,9 @@ import os
 def blf_to_mf4(blf_file:str=None, db_file:dict=None,mf4_file:str=None,no_attribute_parse:list=None):
 
     db_set = dict()
+    decode_error_count = dict()
+    key_frame_ids = {0xAD}
+    key_frame_ids_reported = set()
     if db_file is None:
         print("⚠ 警告：未提供DBC文件，无法进行BLF到MF4的转换")
         return -1
@@ -32,12 +35,25 @@ def blf_to_mf4(blf_file:str=None, db_file:dict=None,mf4_file:str=None,no_attribu
                 decode_choices = True
                 if no_attribute_parse is not None and db_message.name in no_attribute_parse:
                     decode_choices = False
-                decoded_message = db.decode_message(message.arbitration_id, message.data,decode_choices=decode_choices)
+                decoded_message = db.decode_message(
+                    message.arbitration_id,
+                    message.data,
+                    decode_choices=decode_choices,
+                    allow_truncated=True,
+                )
             else:
                 print(f"⚠ 警告：消息 ID 0x{message.arbitration_id:X} 解析错误，跳过该消息")
                 continue
         except Exception as e:
-            #print(f"⚠ 解码失败: {e}")
+            frame_id = message.arbitration_id
+            decode_error_count[frame_id] = decode_error_count.get(frame_id, 0) + 1
+            if frame_id in key_frame_ids and frame_id not in key_frame_ids_reported:
+                print(
+                    f"⚠ 关键报文解码失败统计: frame_id=0x{frame_id:X}, "
+                    f"channel={message.channel}, errors={decode_error_count[frame_id]}, "
+                    f"last_error={type(e).__name__}: {e}"
+                )
+                key_frame_ids_reported.add(frame_id)
             continue
         # 按channel和msg_id分组
         # get message name
@@ -188,7 +204,7 @@ def blf_to_mf4(blf_file:str=None, db_file:dict=None,mf4_file:str=None,no_attribu
 
 if __name__ == "__main__":
     
-    dbc_files = {0:"dbc/SAC/target_CHCANFD.dbc",
+    dbc_files = { 0:"dbc/SAC/target_CHCANFD.dbc",
                   1:"dbc/SAC/target_SFCANFD.dbc",
                   2:"dbc/RTK/CAN_Protocol 2.0_20210507-motorola.dbc"}
     save_path = "data/vehicle"
